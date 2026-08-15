@@ -24,6 +24,17 @@ defmodule LocalizePadWeb.SheetLive do
   phrase. That is the product, so it lives in the header rather than in a
   settings page.
 
+  ## Answers that do not fit
+
+  Some answers are sets. `every Friday the 13th` is five dates, and a margin
+  one line high cannot hold them — it shows `5 dates · Nov 13, 2026, …` and
+  truncates.
+
+  Clicking an answer opens a panel *below* the sheet rather than expanding the
+  row in place. In place would be the obvious choice and the wrong one: the two
+  columns are aligned line for line, and growing one row pushes every answer
+  beneath it out of step with its text. A panel underneath cannot do that.
+
   """
 
   use LocalizePadWeb, :live_view
@@ -57,12 +68,26 @@ defmodule LocalizePadWeb.SheetLive do
      |> assign(:locale, locale)
      |> assign(:source, @sample)
      |> assign(:locale_options, locale_options())
+     |> assign(:selected, nil)
      |> recalculate()}
   end
 
   @impl Phoenix.LiveView
   def handle_event("edit", %{"source" => source}, socket) do
     {:noreply, socket |> assign(:source, source) |> recalculate()}
+  end
+
+  def handle_event("select", %{"line" => line}, socket) do
+    index = String.to_integer(line)
+
+    # Clicking the open line closes it, so the panel is dismissable without a
+    # separate control.
+    selected = if socket.assigns.selected == index, do: nil, else: index
+
+    {:noreply,
+     socket
+     |> assign(:selected, selected)
+     |> assign(:detail, detail_for(socket.assigns.sheet, selected, socket.assigns.locale))}
   end
 
   def handle_event("set_locale", %{"locale" => locale}, socket) do
@@ -88,6 +113,18 @@ defmodule LocalizePadWeb.SheetLive do
     socket
     |> assign(:sheet, sheet)
     |> assign(:total, format_total(sheet, socket.assigns.locale))
+    |> assign(:detail, detail_for(sheet, socket.assigns[:selected], socket.assigns.locale))
+  end
+
+  defp detail_for(_sheet, nil, _locale), do: nil
+
+  defp detail_for(sheet, index, locale) do
+    with %{value: value} = line when not is_nil(value) <- Enum.at(sheet.lines, index),
+         {:ok, parts} <- Value.detail(value, locale: locale) do
+      %{line: line, parts: parts, kind: Value.kind(value)}
+    else
+      _nothing_to_show -> nil
+    end
   end
 
   defp format_total(sheet, locale) do
@@ -166,8 +203,12 @@ defmodule LocalizePadWeb.SheetLive do
           <div class="sheet-answers w-2/5 overflow-auto border-l border-base-300 bg-base-200/40 p-4 text-right">
             <div
               :for={line <- @sheet.lines}
+              phx-click={line.formatted && "select"}
+              phx-value-line={line.index}
               class={[
                 "truncate",
+                line.formatted && "cursor-pointer hover:opacity-70",
+                line.index == @selected && "font-semibold",
                 line.error && "opacity-40",
                 line.kind in [:heading, :comment] && "opacity-30"
               ]}
@@ -178,6 +219,20 @@ defmodule LocalizePadWeb.SheetLive do
           </div>
         </div>
       </form>
+
+      <section
+        :if={@detail}
+        class="mt-3 rounded-lg border border-base-300 bg-base-200/40 px-4 py-3 text-sm"
+      >
+        <div class="mb-2 flex items-baseline justify-between gap-4">
+          <code class="sheet-text truncate opacity-60">{@detail.line.source}</code>
+          <span class="shrink-0 opacity-40">{@detail.kind}</span>
+        </div>
+
+        <ol class="sheet-text flex flex-wrap gap-x-6 gap-y-1">
+          <li :for={part <- @detail.parts}>{part}</li>
+        </ol>
+      </section>
 
       <footer class="mt-3 flex justify-end text-sm">
         <span :if={@total} class="rounded-md bg-base-200 px-3 py-1">

@@ -148,6 +148,53 @@ defmodule LocalizePad.Value do
   end
 
   @doc """
+  Renders a value in full, as a list of parts.
+
+  The margin can only hold one line, so a set of dates is summarised there —
+  `5 dates · Nov 13, 2026, …`. This is the same value with nothing dropped, for
+  a panel that has room.
+
+  Everything that is not a set has one part, identical to `format/2`. Callers
+  need no special case.
+
+  ### Arguments
+
+  * `value` - any evaluated value.
+
+  * `options` - a keyword list of options, as `format/2`.
+
+  ### Returns
+
+  * `{:ok, parts}` where parts is a list of strings, or `{:error, reason}`.
+
+  ### Examples
+
+      iex> LocalizePad.Value.detail(42, locale: :en)
+      {:ok, ["42"]}
+
+  """
+  @spec detail(term(), keyword()) :: {:ok, [String.t()]} | {:error, term()}
+  def detail(value, options \\ [])
+
+  def detail(%Tempo.IntervalSet{} = set, options) do
+    locale = locale_of(options)
+
+    parts =
+      set
+      |> Tempo.IntervalSet.to_list()
+      |> Enum.map(&(&1 |> Tempo.Interval.from() |> format_occurrence(locale)))
+      |> Enum.reject(&is_nil/1)
+
+    {:ok, parts}
+  end
+
+  def detail(value, options) do
+    with {:ok, formatted} <- format(value, options) do
+      {:ok, [formatted]}
+    end
+  end
+
+  @doc """
   Describes the kind of a value, for display and for deciding what operations
   apply.
 

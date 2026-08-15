@@ -743,9 +743,15 @@ One nice piece of disambiguation fell out: **where the ordinal sits decides what
 after and means the 13th day of the month. Position, not vocabulary — the same principle that
 settles `in` as keyword-or-inches.
 
-Set answers now render as a collapsed summary with the count *first* (`5 dates · Nov 13, 2026,
-…`), because the margin truncates from the right and "how many" is the part worth keeping. The
-expansion panel from §5.5 is still to come.
+Set answers render as a collapsed summary with the count *first* (`5 dates · Nov 13, 2026, …`),
+because the margin truncates from the right and "how many" is the part worth keeping.
+
+The expansion is now built, and §5.5's three options resolved differently than expected. Neither
+"spill into following lines" nor a popover was needed: clicking an answer opens a panel *below*
+the sheet. Expanding in place would have been the obvious choice and the wrong one — the two
+columns are aligned line for line, and growing one row pushes every answer beneath it out of step
+with its text. A panel underneath cannot do that, and it generalises: it already shows the value's
+kind, and it is where `Tempo.explain/1` output and `.ics` event metadata will go.
 
 Timezone overlap followed, and it is the §4b line: `9am to 5pm London and 9am to 5pm New York`
 answers "3 hours", and the Tokyo pairings answer "no overlap" — which is what a distributed team
@@ -962,8 +968,9 @@ and worth building during M1.
 3. **Which thesis leads?** M5 (temporal) or M6 (localization) first — see §8. My inclination is
    M5, because it is the more demonstrable of the two and the §4b lines are what a landing page
    is built from; but M6 compounds, and it is the one that is genuinely unassailable.
-4. **Set-answer presentation** (§5.5) — collapsed-summary-plus-expansion (recommended for v1),
-   spill-into-lines, or go straight to the second pane?
+4. ~~**Set-answer presentation** (§5.5)~~ — **resolved.** Collapsed summary in the margin, full
+   value in a panel below the sheet. Not in place, because in-place expansion breaks the
+   line-for-line column alignment the whole editor depends on.
 5. **Relative-date vocabulary placement** — `yesterday` / `next Thursday` in Calendrical
    (CLDR has `dateFields` backing) or in LocalizePad's lexicon?
 6. **Persistence and accounts in v1**, or session-only until the language is good?
