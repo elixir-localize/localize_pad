@@ -29,7 +29,7 @@ defmodule LocalizePad.Evaluator do
 
   alias Localize.Unit
   alias Localize.Unit.Math
-  alias LocalizePad.{Parser, Percentage, Rate, Temporal}
+  alias LocalizePad.{Parser, Percentage, Rate, SalesTax, Temporal}
   alias LocalizePad.Temporal.Zones
 
   # `Decimal` is in the lattice even though nothing in M1 produces one: the
@@ -54,6 +54,7 @@ defmodule LocalizePad.Evaluator do
           | {:currency, atom()}
           | {:rate_target, atom(), Unit.t()}
           | Rate.t()
+          | SalesTax.t()
   @type environment :: %{optional(String.t()) => value()}
 
   @doc """
@@ -115,6 +116,17 @@ defmodule LocalizePad.Evaluator do
 
   def eval({:currency, code}, _environment) do
     {:ok, {:currency, code}}
+  end
+
+  def eval({:tax, tax}, _environment) do
+    {:ok, tax}
+  end
+
+  def eval({:phrase, preposition, left, right}, environment) do
+    with {:ok, left_value} <- eval(left, environment),
+         {:ok, right_value} <- eval(right, environment) do
+      apply_phrase(preposition, left_value, right_value)
+    end
   end
 
   def eval({:variable, name}, environment) do
@@ -280,6 +292,18 @@ defmodule LocalizePad.Evaluator do
     Money.mult(right, Percentage.to_decimal(left))
   end
 
+  # `$300 + VAT` grosses a net price up.
+  defp apply_operator(:add, %Money{} = money, %SalesTax{} = tax) do
+    Money.mult(money, SalesTax.gross_multiplier(tax))
+  end
+
+  # `$300 - VAT` recovers the net price from a gross one, which is division by
+  # 1.15 rather than subtraction of 15%. Subtracting would be wrong by the
+  # tax on the tax.
+  defp apply_operator(:sub, %Money{} = money, %SalesTax{} = tax) do
+    Money.div(money, SalesTax.gross_multiplier(tax))
+  end
+
   # ── Rates ───────────────────────────────────────────────────────────────
 
   # `$99 per week`. Only money needs a rate type; a quantity over a unit is
@@ -432,6 +456,46 @@ defmodule LocalizePad.Evaluator do
     {:error, {:unsupported_operation, operator, describe(left), describe(right)}}
   end
 
+  # ── Prepositional phrases ───────────────────────────────────────────────
+  #
+  # `of`, `off` and `on` put the operator first and the amount second, the
+  # reverse of `200 + 10%`. The preposition survives into the tree because it
+  # distinguishes readings the operands cannot: `VAT on $300` treats $300 as a
+  # net price, `VAT of $300` as a gross one.
+
+  # Percentages: `10% of 200` is the portion, `off` and `on` the whole less or
+  # plus that portion.
+  defp apply_phrase(:of, %Percentage{} = percentage, value) do
+    apply_operator(:mul, value, percentage)
+  end
+
+  defp apply_phrase(:off, %Percentage{} = percentage, value) do
+    apply_operator(:sub, value, percentage)
+  end
+
+  defp apply_phrase(:on, %Percentage{} = percentage, value) do
+    apply_operator(:add, value, percentage)
+  end
+
+  # Sales tax. See `LocalizePad.SalesTax` for why `on` and `of` differ.
+  defp apply_phrase(:on, %SalesTax{} = tax, %Money{} = money) do
+    apply_operator(:mul, money, tax.rate)
+  end
+
+  defp apply_phrase(:off, %SalesTax{} = tax, %Money{} = money) do
+    Money.div(money, SalesTax.gross_multiplier(tax))
+  end
+
+  defp apply_phrase(:of, %SalesTax{} = tax, %Money{} = money) do
+    with {:ok, net} <- Money.div(money, SalesTax.gross_multiplier(tax)) do
+      Money.sub(money, net)
+    end
+  end
+
+  defp apply_phrase(preposition, left, right) do
+    {:error, {:unsupported_phrase, preposition, describe(left), describe(right)}}
+  end
+
   # Two clock times bound a span rather than subtracting. Soulver's own
   # documentation concedes the minus sign is ambiguous here — `5pm - 7pm` is
   # read by most people as a range and `5pm - 2pm` as a subtraction — and
@@ -542,6 +606,7 @@ defmodule LocalizePad.Evaluator do
   defp describe(%Percentage{}), do: :percentage
   defp describe(%Money{currency: code}), do: code
   defp describe(%Rate{}), do: :rate
+  defp describe(%SalesTax{name: name}), do: name
   defp describe(value) when is_number(value), do: :number
   defp describe(other), do: other
 end

@@ -664,10 +664,19 @@ month) *in the application*, where the assumption belongs, rather than pushing i
 where it would become a claim CLDR does not make. The table agrees exactly with the conversions
 Localize does allow, so using it uniformly introduces no disagreement.
 
-Still outstanding in M4: sales tax, and the `Money.Financial` phrase forms (compound interest,
-mortgage repayments). Currency *conversion* is wired but inert until an
-`OPEN_EXCHANGE_RATES_APP_ID` is configured; it reports the missing rate rather than inventing
-a number.
+Sales tax landed, and it forced a small but structural change. Taking tax *off* a price is
+division by 1.15, not subtraction of 15% — £300 gross at 15% is £260.87 net, and subtracting
+would give £255. More awkwardly, `VAT on $300` ($45, treating the amount as net) and
+`VAT of $300` ($39.13, treating it as gross) are different answers to nearly the same sentence.
+
+The operands cannot recover that distinction, so the preposition now survives into the AST as a
+`{:phrase, preposition, left, right}` node rather than being lowered to arithmetic in the
+parser. That is the right shape for a phrase language generally, and the percentage phrases
+moved onto it too.
+
+Still outstanding in M4: the `Money.Financial` phrase forms (compound interest, mortgage
+repayments). Currency *conversion* is wired but inert until an `OPEN_EXCHANGE_RATES_APP_ID` is
+configured; it reports the missing rate rather than inventing a number.
 
 **M5 — The temporal differentiator.** The `TemporalSet` value and the set-answer UI from §5.5
 (collapsed summary + expansion). Then, in rough order of ratio of appeal to effort: timezone

@@ -39,6 +39,8 @@ defmodule LocalizePad.Parser do
 
   * `{:convert, expr, target}` — `3 m to ft`.
 
+  * `{:phrase, preposition, left, right}` — `10% of 200`, `VAT on $300`.
+
   ## Noise
 
   Words that name no variable are skipped wherever they appear, which is what
@@ -96,9 +98,11 @@ defmodule LocalizePad.Parser do
           | {:percentage, number()}
           | {:money, Money.t()}
           | {:currency, atom()}
+          | {:tax, LocalizePad.SalesTax.t()}
           | {:neg, ast()}
           | {:binary, atom(), ast(), ast()}
           | {:convert, ast(), ast()}
+          | {:phrase, :of | :off | :on, ast(), ast()}
 
   @doc """
   Parses a token stream into an AST.
@@ -203,6 +207,10 @@ defmodule LocalizePad.Parser do
     {:ok, {:currency, code}, rest}
   end
 
+  defp parse_prefix([%Token{kind: :tax, value: tax} | rest], _variables) do
+    {:ok, {:tax, tax}, rest}
+  end
+
   defp parse_prefix([%Token{kind: :operator, value: :minus} | rest], variables) do
     with {:ok, operand, rest} <- parse_expression(rest, @prefix_binding_power, variables) do
       {:ok, {:neg, operand}, rest}
@@ -268,12 +276,14 @@ defmodule LocalizePad.Parser do
   defp combine(left, :after, right), do: {:binary, :add, right, left}
   defp combine(left, :before, right), do: {:binary, :sub, right, left}
 
-  # `10% of 200` is the portion; `10% off 200` and `10% on 200` subtract it
-  # from and add it to the whole. All three put the percentage first and the
-  # amount second, which is the reverse of `200 + 10%`.
-  defp combine(left, :of, right), do: {:binary, :mul, right, left}
-  defp combine(left, :off, right), do: {:binary, :sub, right, left}
-  defp combine(left, :on, right), do: {:binary, :add, right, left}
+  # `10% of 200`, `VAT on $300`. The preposition is kept in the tree rather
+  # than lowered to arithmetic here, because it carries meaning the operands
+  # cannot recover: `VAT on $300` treats $300 as a net price and `VAT of $300`
+  # treats it as a gross one, and the two give different answers.
+  defp combine(left, role, right) when role in [:of, :off, :on] do
+    {:phrase, role, left, right}
+  end
+
   defp combine(left, :per, right), do: {:binary, :div, left, right}
   defp combine(left, :juxtapose, right), do: {:binary, :mul, left, right}
   defp combine(left, operator, right), do: {:binary, @operator_nodes[operator], left, right}
@@ -340,7 +350,8 @@ defmodule LocalizePad.Parser do
              :zone,
              :percentage,
              :money,
-             :currency
+             :currency,
+             :tax
            ] ->
         true
 

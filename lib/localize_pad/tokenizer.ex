@@ -37,7 +37,7 @@ defmodule LocalizePad.Tokenizer do
 
   """
 
-  alias LocalizePad.{Currency, Lexicon, Token}
+  alias LocalizePad.{Currency, Lexicon, SalesTax, Token}
   alias LocalizePad.Temporal.{Scanner, Zones}
 
   # Multi-character operators must be tried before their single-character
@@ -317,9 +317,16 @@ defmodule LocalizePad.Tokenizer do
   # A word may be a keyword, a unit, both, or neither. Both readings are kept
   # when they exist — `in` is the conversion keyword and also `inch`.
   defp classify_word(word, locale) do
-    case Lexicon.deictic(word, lexicon_locale(locale)) do
-      {:ok, moment} -> Token.new(:temporal, {:deictic, moment}, word)
-      :error -> classify_ordinary_word(word, locale)
+    cond do
+      SalesTax.names_tax?(word) ->
+        Token.new(:tax, SalesTax.configured(), word)
+
+      match?({:ok, _moment}, Lexicon.deictic(word, lexicon_locale(locale))) ->
+        {:ok, moment} = Lexicon.deictic(word, lexicon_locale(locale))
+        Token.new(:temporal, {:deictic, moment}, word)
+
+      true ->
+        classify_ordinary_word(word, locale)
     end
   end
 

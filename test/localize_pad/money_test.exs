@@ -169,6 +169,36 @@ defmodule LocalizePad.MoneyTest do
     end
   end
 
+  describe "sales tax" do
+    # The whole reason sales tax is not just a percentage: taking tax *off* a
+    # price is division by 1.15, not subtraction of 15%. Subtracting would give
+    # $255 — wrong by $5.87, and wrong in a way nobody notices until an invoice
+    # disagrees.
+    test "removing tax divides rather than subtracts" do
+      assert answer("$300 - VAT") == "$260.87"
+      refute answer("$300 - VAT") == "$255.00"
+    end
+
+    test "adding tax to a net price" do
+      assert answer("$300 + VAT") == "$345.00"
+    end
+
+    test "on treats the amount as net, of treats it as gross" do
+      # Both readings are in use, so the preposition has to carry the
+      # distinction — which is why it survives into the AST.
+      assert answer("VAT on $300") == "$45.00"
+      assert answer("VAT of $300") == "$39.13"
+    end
+
+    test "off recovers the net price inside a gross one" do
+      assert answer("VAT off $300") == "$260.87"
+    end
+
+    test "GST names the same tax" do
+      assert answer("$300 + GST") == "$345.00"
+    end
+  end
+
   describe "totals" do
     test "money sums with money" do
       sheet = Sheet.new("$19\n$22", locale: :en)

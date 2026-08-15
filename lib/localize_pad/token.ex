@@ -28,6 +28,7 @@ defmodule LocalizePad.Token do
           | :percentage
           | :money
           | :currency
+          | :tax
 
   @type t :: %__MODULE__{
           kind: kind(),
