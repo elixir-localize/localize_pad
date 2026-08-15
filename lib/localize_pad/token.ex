@@ -30,6 +30,7 @@ defmodule LocalizePad.Token do
           | :currency
           | :tax
           | :ordinal
+          | :calendar
 
   @type t :: %__MODULE__{
           kind: kind(),

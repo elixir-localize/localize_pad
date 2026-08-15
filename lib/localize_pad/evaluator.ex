@@ -30,7 +30,7 @@ defmodule LocalizePad.Evaluator do
   alias Localize.Unit
   alias Localize.Unit.Math
   alias LocalizePad.{Finance, Parser, Percentage, Rate, SalesTax, Temporal}
-  alias LocalizePad.Temporal.{Recurrence, Window, Workdays, Zones}
+  alias LocalizePad.Temporal.{Calendars, Recurrence, Window, Workdays, Zones}
 
   # `Decimal` is in the lattice even though nothing in M1 produces one: the
   # number scanner can be asked for decimals, `Localize.Unit` values may carry
@@ -59,6 +59,8 @@ defmodule LocalizePad.Evaluator do
           | Window.t()
           | boolean()
           | String.t()
+          | Date.t()
+          | {:calendar, module()}
   @type environment :: %{optional(String.t()) => value()}
 
   @doc """
@@ -124,6 +126,10 @@ defmodule LocalizePad.Evaluator do
 
   def eval({:tax, tax}, _environment) do
     {:ok, tax}
+  end
+
+  def eval({:calendar, calendar}, _environment) do
+    {:ok, {:calendar, calendar}}
   end
 
   def eval({:finance, kind, slots}, _environment) do
@@ -446,6 +452,11 @@ defmodule LocalizePad.Evaluator do
   defp apply_operator(_operator, %Zones{}, _right), do: {:error, :bare_zone}
   defp apply_operator(_operator, _left, %Zones{}), do: {:error, :bare_zone}
 
+  # A calendar with nothing to name is not a value either, and for the same
+  # reason: `Chinese` and `Indian` are ordinary words.
+  defp apply_operator(_operator, {:calendar, _calendar}, _right), do: {:error, :bare_calendar}
+  defp apply_operator(_operator, _left, {:calendar, _calendar}), do: {:error, :bare_calendar}
+
   # ── Temporal arithmetic ─────────────────────────────────────────────────
 
   # `June 12 + 3 weeks`. The duration arrives as an ordinary unit quantity,
@@ -584,6 +595,14 @@ defmodule LocalizePad.Evaluator do
   # same thing the minus sign produces for a pair of temporal values.
   defp convert(%Tempo{} = from, %Tempo{} = to) do
     apply_operator(:sub, from, to)
+  end
+
+  # `2026-06-15 in Hebrew`. A date is a position in time and a calendar is one
+  # way of naming it; this asks for the other name.
+  defp convert(%Tempo{} = tempo, {:calendar, calendar}) do
+    with {:ok, date} <- Tempo.to_date(tempo) do
+      Calendars.convert(date, calendar)
+    end
   end
 
   # `9am to 5pm London`. The zone reaches the right-hand endpoint first, since

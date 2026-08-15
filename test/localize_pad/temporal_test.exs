@@ -350,6 +350,38 @@ defmodule LocalizePad.TemporalTest do
     end
   end
 
+  describe "the same date, named by another calendar" do
+    doctest LocalizePad.Temporal.Calendars
+
+    test "converting out of Gregorian" do
+      assert answer("2026-06-15 in Hebrew") == "30 Sivan 5786"
+      assert answer("2026-06-15 in Coptic") == "Paona 8, 1742 AM"
+      assert answer("June 15, 2026 in Julian") == "June 2, 2026"
+    end
+
+    test "the answer is localized, not transliterated" do
+      # CLDR has patterns per calendar, so a Japanese date on a Japanese sheet
+      # gets its imperial era and Japanese numerals.
+      assert answer("2026-06-15 in Japanese", locale: :ja) == "令和8年6月15日"
+      assert answer("2026-06-15 in Buddhist", locale: :th) =~ "2569"
+    end
+
+    test "a calendar name in prose is not a conversion" do
+      # `Chinese`, `Indian` and `Japanese` are ordinary words. A note
+      # mentioning one must not sprout a date in the margin — the same rule
+      # that keeps `flight to Paris` from becoming a clock reading.
+      assert shown("trip to Chinese restaurant") == nil
+      assert shown("Hebrew") == nil
+    end
+
+    test "an out-of-range conversion is reported, not raised" do
+      # Several calendars are astronomically computed and reject dates outside
+      # the installed ephemeris by raising. The render path catches it.
+      assert {:error, %Calendrical.UnsupportedDateRangeError{}} =
+               LocalizePad.Temporal.Calendars.convert(~D[9999-01-01], Calendrical.Persian)
+    end
+  end
+
   describe "the running total" do
     # Adding up the dates in a sheet is meaningless. Before this was guarded,
     # the first date seeded the accumulator and the total read as a date while

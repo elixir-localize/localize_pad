@@ -749,8 +749,24 @@ And the sheet's locale now travels *in the AST node* rather than being read from
 evaluation time, which is what makes `day of the week on 24.01.1984` answer "Dienstag" under
 `:de` rather than "Tuesday".
 
+Cross-calendar dates landed next, and they cost almost nothing because Calendrical implements
+all eighteen: `2026-06-15 in Hebrew` is "30 Sivan 5786", `in Coptic` is "Paona 8, 1742 AM",
+`in Julian` is thirteen days back. The answers are *localized* rather than transliterated — the
+same date on a `:ja` sheet reads `令和8年6月15日`, imperial era and all, because `Localize.Date`
+formats through CLDR's patterns for that calendar.
+
+A calendar, like a zone, is never a value on its own: `Chinese`, `Indian` and `Japanese` are
+ordinary words, and `trip to Chinese restaurant` must stay a note.
+
+Two findings worth carrying. Reading a date *written* in a non-Gregorian calendar works for
+Hebrew (`29 Kislev 5786` parses) but not for any of the Islamic variants, whose CLDR patterns
+Calendrical does not match against those month names — an upstream question rather than
+something to work around. And `Calendrical` **raises** rather than returning an error for dates
+outside the installed JPL ephemeris, which on a render path is a crash; the conversion is
+wrapped, and there is a test pinning it.
+
 Still outstanding in M5: `.ics` import and public holidays, `Tempo.explain/1` in the answer
-panel, dependency scheduling, and uncertainty/cross-calendar.
+panel, dependency scheduling, and uncertainty (`circa 600 BCE`, `the 1560s`).
 
 **M6 — The localization thesis.** Localized operator lexicon for `de`, `fr`, `es`, `ja`. Locale
 switch re-parses the document. Dates arrive already localized from M3, so this is purely about

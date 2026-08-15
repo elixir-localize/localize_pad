@@ -103,6 +103,7 @@ defmodule LocalizePad.Parser do
           | {:money, Money.t()}
           | {:currency, atom()}
           | {:tax, LocalizePad.SalesTax.t()}
+          | {:calendar, module()}
           | {:neg, ast()}
           | {:binary, atom(), ast(), ast()}
           | {:convert, ast(), ast()}
@@ -241,6 +242,10 @@ defmodule LocalizePad.Parser do
 
   defp parse_prefix([%Token{kind: :tax, value: tax} | rest], _variables) do
     {:ok, {:tax, tax}, rest}
+  end
+
+  defp parse_prefix([%Token{kind: :calendar, value: calendar} | rest], _variables) do
+    {:ok, {:calendar, calendar}, rest}
   end
 
   defp parse_prefix([%Token{kind: :operator, value: :minus} | rest], variables) do
@@ -384,7 +389,8 @@ defmodule LocalizePad.Parser do
              :percentage,
              :money,
              :currency,
-             :tax
+             :tax,
+             :calendar
            ] ->
         true
 

@@ -112,6 +112,13 @@ defmodule LocalizePad.Value do
   # by whatever produced them.
   def format(text, _options) when is_binary(text), do: {:ok, text}
 
+  # A date in another calendar. `Localize.Date` reads CLDR's patterns for that
+  # calendar, so a Japanese date on a `:ja` sheet gets its imperial era rather
+  # than a transliteration.
+  def format(%Date{} = date, options) do
+    Localize.Date.to_string(date, locale: locale_of(options), format: :long)
+  end
+
   def format(%LocalizePad.Temporal.Window{} = window, options) do
     LocalizePad.Temporal.Window.format(window, options)
   end
@@ -189,6 +196,7 @@ defmodule LocalizePad.Value do
   def kind(%LocalizePad.Temporal.Window{}), do: :window
   def kind(value) when is_boolean(value), do: :boolean
   def kind(value) when is_binary(value), do: :text
+  def kind(%Date{}), do: :temporal
   def kind(value) when is_number(value), do: :number
   def kind(_other), do: :unknown
 

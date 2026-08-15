@@ -38,7 +38,7 @@ defmodule LocalizePad.Tokenizer do
   """
 
   alias LocalizePad.{Currency, Lexicon, SalesTax, Token}
-  alias LocalizePad.Temporal.{Scanner, Zones}
+  alias LocalizePad.Temporal.{Calendars, Scanner, Zones}
 
   # Multi-character operators must be tried before their single-character
   # prefixes, hence "->" and "**" first. The `u` modifier is required: without
@@ -115,6 +115,7 @@ defmodule LocalizePad.Tokenizer do
       |> join_money(locale)
       |> mark_currencies(locale)
       |> join_zones()
+      |> mark_calendars()
 
     {:ok, tokens}
   end
@@ -260,6 +261,21 @@ defmodule LocalizePad.Tokenizer do
       %Token{kind: :word, source: word} = token ->
         case Currency.resolve(word, locale) do
           {:ok, code} -> Token.new(:currency, code, word)
+          :error -> token
+        end
+
+      token ->
+        token
+    end)
+  end
+
+  # A calendar's name is only ever a conversion target, so like a zone it is
+  # marked but declines to be a value on its own.
+  defp mark_calendars(tokens) do
+    Enum.map(tokens, fn
+      %Token{kind: :word, source: word} = token ->
+        case Calendars.resolve(word) do
+          {:ok, calendar} -> Token.new(:calendar, calendar, word)
           :error -> token
         end
 
