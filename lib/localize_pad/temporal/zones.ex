@@ -1,0 +1,276 @@
+defmodule LocalizePad.Temporal.Zones do
+  @moduledoc """
+  Resolves the names people actually type — `Sydney`, `LAX`, `PST`, `Japan` —
+  into IANA time zones.
+
+  ## Why a curated list rather than every IANA city
+
+  IANA ships 597 zones, and taking the last path segment of each would give a
+  city index for free. It would also give `Truk`, `Thule`, `Yap`, and a long
+  tail of names that collide with ordinary words in ordinary notes. In a
+  language whose defining rule is that unrecognised words are noise, a word
+  that silently becomes a *value* is far more damaging than one that stays
+  noise — the same reasoning that governs the date shape filter in
+  `LocalizePad.Temporal.Scanner`.
+
+  So the city table below is curated to the large cities people write down,
+  which is also what Soulver documents itself as supporting. Extending it is a
+  data edit.
+
+  ## A zone is never a value on its own
+
+  `Sydney` alone is not a time. Only `6pm Sydney`, or a conversion target in
+  `… in Chicago`, means anything, and the evaluator declines a bare zone. That
+  keeps `flight to Paris` an ordinary note rather than a clock reading.
+
+  ## What is delegated
+
+  Zone abbreviations (`PST`, `JST`), IANA identifiers, GMT offsets and CLDR
+  localized zone names (`Pacific Time`, `Mitteleuropäische Zeit`) are all
+  handled by `Calendrical.TimeZone.resolve/3`. This module adds only the
+  layers CLDR has no answer for: bare city names and airport codes.
+
+  """
+
+  defstruct [:name]
+
+  @type t :: %__MODULE__{name: String.t()}
+
+  # Cities large enough that someone writes them in a note expecting a clock
+  # reading. Keyed by the lowercased name so lookup is case-insensitive.
+  @cities %{
+    "amsterdam" => "Europe/Amsterdam",
+    "athens" => "Europe/Athens",
+    "auckland" => "Pacific/Auckland",
+    "bangkok" => "Asia/Bangkok",
+    "beijing" => "Asia/Shanghai",
+    "berlin" => "Europe/Berlin",
+    "bogota" => "America/Bogota",
+    "boston" => "America/New_York",
+    "brisbane" => "Australia/Brisbane",
+    "brussels" => "Europe/Brussels",
+    "buenos aires" => "America/Argentina/Buenos_Aires",
+    "cairo" => "Africa/Cairo",
+    "chicago" => "America/Chicago",
+    "copenhagen" => "Europe/Copenhagen",
+    "dallas" => "America/Chicago",
+    "delhi" => "Asia/Kolkata",
+    "denver" => "America/Denver",
+    "dubai" => "Asia/Dubai",
+    "dublin" => "Europe/Dublin",
+    "frankfurt" => "Europe/Berlin",
+    "hanoi" => "Asia/Ho_Chi_Minh",
+    "helsinki" => "Europe/Helsinki",
+    "hong kong" => "Asia/Hong_Kong",
+    "honolulu" => "Pacific/Honolulu",
+    "houston" => "America/Chicago",
+    "istanbul" => "Europe/Istanbul",
+    "jakarta" => "Asia/Jakarta",
+    "johannesburg" => "Africa/Johannesburg",
+    "karachi" => "Asia/Karachi",
+    "kiev" => "Europe/Kyiv",
+    "kyiv" => "Europe/Kyiv",
+    "lagos" => "Africa/Lagos",
+    "lima" => "America/Lima",
+    "lisbon" => "Europe/Lisbon",
+    "london" => "Europe/London",
+    "los angeles" => "America/Los_Angeles",
+    "madrid" => "Europe/Madrid",
+    "manila" => "Asia/Manila",
+    "melbourne" => "Australia/Melbourne",
+    "mexico city" => "America/Mexico_City",
+    "miami" => "America/New_York",
+    "milan" => "Europe/Rome",
+    "montreal" => "America/Toronto",
+    "moscow" => "Europe/Moscow",
+    "mumbai" => "Asia/Kolkata",
+    "munich" => "Europe/Berlin",
+    "nairobi" => "Africa/Nairobi",
+    "new york" => "America/New_York",
+    "oslo" => "Europe/Oslo",
+    "paris" => "Europe/Paris",
+    "perth" => "Australia/Perth",
+    "prague" => "Europe/Prague",
+    "reykjavik" => "Atlantic/Reykjavik",
+    "rio de janeiro" => "America/Sao_Paulo",
+    "riyadh" => "Asia/Riyadh",
+    "rome" => "Europe/Rome",
+    "san francisco" => "America/Los_Angeles",
+    "santiago" => "America/Santiago",
+    "sao paulo" => "America/Sao_Paulo",
+    "seattle" => "America/Los_Angeles",
+    "seoul" => "Asia/Seoul",
+    "shanghai" => "Asia/Shanghai",
+    "singapore" => "Asia/Singapore",
+    "stockholm" => "Europe/Stockholm",
+    "sydney" => "Australia/Sydney",
+    "taipei" => "Asia/Taipei",
+    "tehran" => "Asia/Tehran",
+    "tel aviv" => "Asia/Jerusalem",
+    "tokyo" => "Asia/Tokyo",
+    "toronto" => "America/Toronto",
+    "vancouver" => "America/Vancouver",
+    "vienna" => "Europe/Vienna",
+    "warsaw" => "Europe/Warsaw",
+    "wellington" => "Pacific/Auckland",
+    "zurich" => "Europe/Zurich"
+  }
+
+  # Countries, using the capital's zone where the country spans several — the
+  # convention Soulver documents.
+  @countries %{
+    "argentina" => "America/Argentina/Buenos_Aires",
+    "australia" => "Australia/Sydney",
+    "brazil" => "America/Sao_Paulo",
+    "canada" => "America/Toronto",
+    "china" => "Asia/Shanghai",
+    "france" => "Europe/Paris",
+    "germany" => "Europe/Berlin",
+    "india" => "Asia/Kolkata",
+    "ireland" => "Europe/Dublin",
+    "italy" => "Europe/Rome",
+    "japan" => "Asia/Tokyo",
+    "mexico" => "America/Mexico_City",
+    "netherlands" => "Europe/Amsterdam",
+    "new zealand" => "Pacific/Auckland",
+    "norway" => "Europe/Oslo",
+    "poland" => "Europe/Warsaw",
+    "russia" => "Europe/Moscow",
+    "singapore" => "Asia/Singapore",
+    "spain" => "Europe/Madrid",
+    "sweden" => "Europe/Stockholm",
+    "switzerland" => "Europe/Zurich",
+    "thailand" => "Asia/Bangkok",
+    "turkey" => "Europe/Istanbul",
+    "uk" => "Europe/London",
+    "usa" => "America/New_York"
+  }
+
+  # Airport codes, which people use as shorthand for a city rather than an
+  # airport: `7:30am LAX`.
+  @airports %{
+    "ams" => "Europe/Amsterdam",
+    "atl" => "America/New_York",
+    "bkk" => "Asia/Bangkok",
+    "bos" => "America/New_York",
+    "cdg" => "Europe/Paris",
+    "dfw" => "America/Chicago",
+    "dub" => "Europe/Dublin",
+    "dxb" => "Asia/Dubai",
+    "fco" => "Europe/Rome",
+    "fra" => "Europe/Berlin",
+    "hkg" => "Asia/Hong_Kong",
+    "hnd" => "Asia/Tokyo",
+    "iad" => "America/New_York",
+    "ist" => "Europe/Istanbul",
+    "jfk" => "America/New_York",
+    "lax" => "America/Los_Angeles",
+    "lhr" => "Europe/London",
+    "mel" => "Australia/Melbourne",
+    "mex" => "America/Mexico_City",
+    "mia" => "America/New_York",
+    "muc" => "Europe/Berlin",
+    "nrt" => "Asia/Tokyo",
+    "ord" => "America/Chicago",
+    "sfo" => "America/Los_Angeles",
+    "sin" => "Asia/Singapore",
+    "syd" => "Australia/Sydney",
+    "yyz" => "America/Toronto",
+    "zrh" => "Europe/Zurich"
+  }
+
+  @doc """
+  Resolves a name to a zone.
+
+  ### Arguments
+
+  * `name` - a city, country, airport code, zone abbreviation or IANA
+    identifier.
+
+  ### Returns
+
+  * `{:ok, zone}` where zone is a `t:LocalizePad.Temporal.Zones.t/0`.
+
+  * `:error` when the name is not a zone — which is the common case, since
+    most words are not.
+
+  ### Examples
+
+      iex> LocalizePad.Temporal.Zones.resolve("Sydney")
+      {:ok, %LocalizePad.Temporal.Zones{name: "Australia/Sydney"}}
+
+      iex> LocalizePad.Temporal.Zones.resolve("LAX")
+      {:ok, %LocalizePad.Temporal.Zones{name: "America/Los_Angeles"}}
+
+      iex> LocalizePad.Temporal.Zones.resolve("breakfast")
+      :error
+
+  """
+  @spec resolve(String.t()) :: {:ok, t()} | :error
+  def resolve(name) when is_binary(name) do
+    key = name |> String.trim() |> String.downcase()
+
+    with :error <- Map.fetch(@cities, key),
+         :error <- Map.fetch(@countries, key),
+         :error <- Map.fetch(@airports, key) do
+      via_calendrical(name)
+    else
+      {:ok, zone} -> {:ok, %__MODULE__{name: zone}}
+    end
+  end
+
+  # Names shaped like a zone identifier rather than an English word: an
+  # all-caps abbreviation (`PST`, `JST`), an IANA path (`Asia/Tokyo`), a GMT
+  # offset, or a CLDR zone name (`Pacific Time`).
+  #
+  # The shape test matters for cost as much as for correctness — without it,
+  # every word of every line would be handed to the zone resolver.
+  @zone_shaped ~r/^([A-Z]{2,5}|.+\/.+|(GMT|UTC)[-+].+|.*\bTime)$/u
+
+  defp via_calendrical(name) do
+    if Regex.match?(@zone_shaped, name) do
+      case Calendrical.TimeZone.resolve(name, NaiveDateTime.utc_now()) do
+        {:ok, %DateTime{time_zone: zone}} -> {:ok, %__MODULE__{name: zone}}
+        _other -> :error
+      end
+    else
+      :error
+    end
+  end
+
+  @doc """
+  Returns every name this module recognises.
+
+  Used by the tokenizer to match multi-word names such as `New York` before
+  their individual words are classified.
+
+  ### Returns
+
+  * A list of lowercased names, longest first.
+
+  ### Examples
+
+      iex> "new york" in LocalizePad.Temporal.Zones.known_names()
+      true
+
+  """
+  @spec known_names() :: [String.t()]
+  def known_names do
+    key = {__MODULE__, :known_names}
+
+    case :persistent_term.get(key, nil) do
+      nil ->
+        names =
+          [@cities, @countries, @airports]
+          |> Enum.flat_map(&Map.keys/1)
+          |> Enum.uniq()
+          |> Enum.sort_by(&(-String.length(&1)))
+
+        :persistent_term.put(key, names)
+        names
+
+      names ->
+        names
+    end
+  end
+end

@@ -69,6 +69,17 @@ defmodule LocalizePad.Value do
     Localize.Number.to_string(number, format_options(options))
   end
 
+  # A zoned answer is shown as a clock time. The question `6pm Sydney in
+  # Chicago` asks what the clock reads there, so the date would be noise —
+  # except when it differs from the source date, which is exactly when it
+  # matters most.
+  def format(%DateTime{} = datetime, options) do
+    Localize.Time.to_string(DateTime.to_time(datetime),
+      locale: locale_of(options),
+      format: :short
+    )
+  end
+
   def format(%Localize.Duration{} = duration, options) do
     Localize.Duration.to_string(duration, locale: locale_of(options))
   end
@@ -91,8 +102,8 @@ defmodule LocalizePad.Value do
 
   ### Returns
 
-  * An atom naming the kind: `:number`, `:quantity`, `:temporal`, `:duration`
-    or `:unknown`.
+  * An atom naming the kind: `:number`, `:quantity`, `:temporal`, `:duration`,
+    `:zoned_time` or `:unknown`.
 
   ### Examples
 
@@ -104,11 +115,12 @@ defmodule LocalizePad.Value do
       :quantity
 
   """
-  @spec kind(term()) :: :number | :quantity | :temporal | :duration | :unknown
+  @spec kind(term()) :: :number | :quantity | :temporal | :duration | :zoned_time | :unknown
   def kind(%Unit{}), do: :quantity
   def kind(%Tempo{}), do: :temporal
   def kind(%Tempo.Duration{}), do: :duration
   def kind(%Localize.Duration{}), do: :duration
+  def kind(%DateTime{}), do: :zoned_time
   def kind(value) when is_number(value), do: :number
   def kind(_other), do: :unknown
 

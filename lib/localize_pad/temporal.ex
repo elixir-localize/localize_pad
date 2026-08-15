@@ -66,8 +66,23 @@ defmodule LocalizePad.Temporal do
       7
 
   """
-  @spec resolve(fields(), keyword()) :: {:ok, Tempo.t()} | {:error, term()}
-  def resolve(fields, options \\ []) when is_map(fields) do
+  @spec resolve(fields() | {:deictic, atom()}, keyword()) :: {:ok, Tempo.t()} | {:error, term()}
+  def resolve(fields, options \\ [])
+
+  # `today` and its neighbours are resolved against the reference date rather
+  # than being parsed, since there is nothing in them to parse.
+  def resolve({:deictic, moment}, options) do
+    reference = Keyword.get_lazy(options, :reference_date, &Date.utc_today/0)
+
+    case moment do
+      :today -> from_date(reference)
+      :tomorrow -> reference |> Date.add(1) |> from_date()
+      :yesterday -> reference |> Date.add(-1) |> from_date()
+      :now -> from_datetime(Keyword.get_lazy(options, :reference_datetime, &DateTime.utc_now/0))
+    end
+  end
+
+  def resolve(fields, options) when is_map(fields) do
     reference = Keyword.get_lazy(options, :reference_date, &Date.utc_today/0)
 
     cond do
@@ -78,10 +93,25 @@ defmodule LocalizePad.Temporal do
         {:error, {:unsupported_temporal, :week}}
 
       true ->
-        fields
-        |> supply_year(reference)
-        |> to_components()
-        |> build()
+        with {:ok, tempo} <- fields |> supply_year(reference) |> to_components() |> build() do
+          apply_parsed_zone(tempo, Map.get(fields, :time_zone), options)
+        end
+    end
+  end
+
+  # `Calendrical.parse/2` captures a trailing zone string — `7:30am LAX` yields
+  # `%{hour: 7, minute: 30, time_zone: "LAX"}` — but leaves it unresolved,
+  # since what counts as a zone name is the caller's business. Resolving it
+  # here means abbreviations, IANA names and airport codes all arrive by the
+  # same route as a city typed on its own.
+  defp apply_parsed_zone(tempo, nil, _options), do: {:ok, tempo}
+
+  defp apply_parsed_zone(tempo, zone_string, options) do
+    case LocalizePad.Temporal.Zones.resolve(zone_string) do
+      {:ok, zone} -> in_zone(tempo, zone, options)
+      # An unrecognised zone leaves the time as a plain wall-clock value rather
+      # than failing the line — the time is still the time.
+      :error -> {:ok, tempo}
     end
   end
 
@@ -117,6 +147,20 @@ defmodule LocalizePad.Temporal do
         _other -> []
       end
     end)
+  end
+
+  defp from_date(%Date{} = date) do
+    Tempo.new(year: date.year, month: date.month, day: date.day)
+  end
+
+  defp from_datetime(%DateTime{} = datetime) do
+    Tempo.new(
+      year: datetime.year,
+      month: datetime.month,
+      day: datetime.day,
+      hour: datetime.hour,
+      minute: datetime.minute
+    )
   end
 
   defp build([]), do: {:error, :no_temporal_fields}
@@ -185,6 +229,113 @@ defmodule LocalizePad.Temporal do
   defp whole_number(value), do: {:error, {:fractional_duration, value}}
 
   @doc """
+  Converts a time-only value into an Elixir `Time`.
+
+  `Tempo.to_elixir/1` cannot do this: it routes a value carrying only clock
+  fields towards `NaiveDateTime` and fails for want of a date. The individual
+  field accessors do work, so this assembles the `Time` from those.
+
+  ### Arguments
+
+  * `tempo` - a `Tempo` value.
+
+  ### Returns
+
+  * `{:ok, time}` when the value carries clock fields and no date.
+
+  * `:error` otherwise — including for a full datetime, which has a date and
+    should be treated as one.
+
+  ### Examples
+
+      iex> {:ok, tempo} = LocalizePad.Temporal.resolve(%{hour: 7, minute: 30})
+      iex> LocalizePad.Temporal.to_time(tempo)
+      {:ok, ~T[07:30:00]}
+
+      iex> {:ok, tempo} = LocalizePad.Temporal.resolve(%{year: 2026, month: 6, day: 15})
+      iex> LocalizePad.Temporal.to_time(tempo)
+      :error
+
+  """
+  @spec to_time(Tempo.t()) :: {:ok, Time.t()} | :error
+  def to_time(%Tempo{} = tempo) do
+    hour = Tempo.hour(tempo)
+
+    if is_integer(hour) and is_nil(Tempo.year(tempo)) do
+      # `Time.new/3` reports its own error shape; this function's contract is
+      # the simpler `{:ok, time} | :error`, so narrow it here.
+      case Time.new(hour, Tempo.minute(tempo) || 0, Tempo.second(tempo) || 0) do
+        {:ok, time} -> {:ok, time}
+        {:error, _reason} -> :error
+      end
+    else
+      :error
+    end
+  end
+
+  def to_time(_other), do: :error
+
+  @doc """
+  Anchors a temporal value to a time zone, producing a `DateTime`.
+
+  `6pm Sydney` is a wall-clock time and a place. Turning it into an instant
+  needs a date as well, and a bare time has none — so today's date supplies
+  one. That is the reading a person means: `6pm Sydney` is today's 6pm there,
+  not some abstract 6pm.
+
+  ### Arguments
+
+  * `tempo` - the temporal value.
+
+  * `zone` - a `t:LocalizePad.Temporal.Zones.t/0`.
+
+  * `options` - a keyword list of options.
+
+  ### Options
+
+  * `:reference_date` - the date to anchor a bare time to. Defaults to
+    `Date.utc_today/0`.
+
+  ### Returns
+
+  * `{:ok, datetime}` on success.
+
+  * `{:error, reason}` when the value carries no clock time, or the zone is
+    not in the loaded timezone database.
+
+  """
+  @spec in_zone(Tempo.t(), LocalizePad.Temporal.Zones.t(), keyword()) ::
+          {:ok, DateTime.t()} | {:error, term()}
+  def in_zone(%Tempo{} = tempo, %LocalizePad.Temporal.Zones{name: zone}, options \\ []) do
+    reference = Keyword.get_lazy(options, :reference_date, &Date.utc_today/0)
+
+    case to_time(tempo) do
+      {:ok, time} -> anchor(tempo, time, zone, reference)
+      :error -> {:error, :not_a_clock_time}
+    end
+  end
+
+  # A wall-clock time on a daylight-saving boundary may name two instants or
+  # none. Both are resolved rather than reported, because a notepad answer is
+  # better slightly arbitrary than absent: the earlier of an ambiguous pair,
+  # and the instant just before a gap.
+  defp anchor(tempo, time, zone, reference) do
+    case DateTime.new(date_of(tempo, reference), time, zone) do
+      {:ok, datetime} -> {:ok, datetime}
+      {:ambiguous, first, _second} -> {:ok, first}
+      {:gap, just_before, _just_after} -> {:ok, just_before}
+      {:error, reason} -> {:error, {:unknown_zone, zone, reason}}
+    end
+  end
+
+  defp date_of(%Tempo{} = tempo, reference) do
+    case Tempo.to_date(tempo) do
+      {:ok, date} -> date
+      _no_date -> reference
+    end
+  end
+
+  @doc """
   Formats a temporal value in the given locale.
 
   ### Arguments
@@ -232,11 +383,18 @@ defmodule LocalizePad.Temporal do
     # `to_elixir/1` yields `Date`, `Time`, `NaiveDateTime` or `Duration` and
     # never a `DateTime`, so a zoned value arrives here without its zone.
     # Rendering the offset is part of the timezone work.
-    case Tempo.to_elixir(tempo) do
-      {:ok, %Date{} = date} -> Localize.Date.to_string(date, locale: locale, format: :long)
-      {:ok, %Time{} = time} -> Localize.Time.to_string(time, locale: locale, format: :short)
-      {:ok, %NaiveDateTime{} = naive} -> Localize.DateTime.to_string(naive, locale: locale)
-      _other -> {:ok, to_string(tempo)}
+    case {to_time(tempo), Tempo.to_elixir(tempo)} do
+      {{:ok, time}, _elixir} ->
+        Localize.Time.to_string(time, locale: locale, format: :short)
+
+      {_no_time, {:ok, %Date{} = date}} ->
+        Localize.Date.to_string(date, locale: locale, format: :long)
+
+      {_no_time, {:ok, %NaiveDateTime{} = naive}} ->
+        Localize.DateTime.to_string(naive, locale: locale)
+
+      _other ->
+        {:ok, to_string(tempo)}
     end
   end
 

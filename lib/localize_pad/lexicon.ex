@@ -34,6 +34,8 @@ defmodule LocalizePad.Lexicon do
 
   @type role :: :to | :per | :after | :before
 
+  @type deictic :: :now | :today | :tomorrow | :yesterday
+
   @lexicons %{
     en: %{
       # Conversion. "in" is also the unit `inch`; the tokenizer reports both
@@ -51,6 +53,59 @@ defmodule LocalizePad.Lexicon do
       before: ["before", "ago", "until", "till"]
     }
   }
+
+  # Words naming a moment relative to the present. Kept separate from the role
+  # table because these are *operands* rather than operators — `today` is a
+  # date, not something that acts on one.
+  #
+  # CLDR does carry relative field names, but not reliably as bare input words
+  # in every locale, so these are authored here alongside the operator
+  # vocabulary and travel with it when a locale is added.
+  @deictics %{
+    en: %{
+      now: ["now"],
+      today: ["today"],
+      tomorrow: ["tomorrow"],
+      yesterday: ["yesterday"]
+    }
+  }
+
+  @doc """
+  Returns the moment a word names relative to the present, if any.
+
+  ### Arguments
+
+  * `word` - the surface form to look up.
+
+  * `locale` - a locale identifier. Locales without an authored table fall
+    back to `:en`.
+
+  ### Returns
+
+  * `{:ok, deictic}` where deictic is `:now`, `:today`, `:tomorrow` or
+    `:yesterday`.
+
+  * `:error` otherwise.
+
+  ### Examples
+
+      iex> LocalizePad.Lexicon.deictic("today", :en)
+      {:ok, :today}
+
+      iex> LocalizePad.Lexicon.deictic("Tuesday", :en)
+      :error
+
+  """
+  @spec deictic(String.t(), atom()) :: {:ok, deictic()} | :error
+  def deictic(word, locale \\ :en) when is_binary(word) do
+    downcased = String.downcase(word)
+
+    @deictics
+    |> Map.get(locale, @deictics.en)
+    |> Enum.find_value(:error, fn {moment, forms} ->
+      if downcased in forms, do: {:ok, moment}
+    end)
+  end
 
   @doc """
   Returns the role a word plays in the given locale, if any.

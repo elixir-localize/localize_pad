@@ -16,7 +16,15 @@ defmodule LocalizePad.Token do
   """
 
   @type kind ::
-          :number | :word | :unit | :keyword | :operator | :punctuation | :line_ref | :temporal
+          :number
+          | :word
+          | :unit
+          | :keyword
+          | :operator
+          | :punctuation
+          | :line_ref
+          | :temporal
+          | :zone
 
   @type t :: %__MODULE__{
           kind: kind(),

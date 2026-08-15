@@ -13,6 +13,12 @@ defmodule LocalizePad.TemporalTest do
     line.formatted || line.error
   end
 
+  # What the answer column actually displays: an error shows nothing at all.
+  defp shown(source, options \\ []) do
+    [line] = Sheet.new(source, Keyword.put_new(options, :locale, :en)).lines
+    line.formatted
+  end
+
   describe "the shape filter" do
     # This is the safety mechanism for the whole temporal layer. Calendrical
     # will happily parse "2026" as a year and "11" as an hour, so without a
@@ -155,6 +161,103 @@ defmodule LocalizePad.TemporalTest do
     test "a duration is written in the sheet's locale" do
       assert answer("January 10, 2027 - February 5, 2027", locale: :en) == "26 days"
       assert answer("10.01.2027 - 05.02.2027", locale: :de) == "26 Tage"
+    end
+  end
+
+  describe "deictic dates" do
+    test "today, tomorrow and yesterday resolve against the present" do
+      today = Date.utc_today()
+
+      assert answer("today") == expected_date(today)
+      assert answer("tomorrow") == expected_date(Date.add(today, 1))
+      assert answer("yesterday") == expected_date(Date.add(today, -1))
+    end
+
+    test "a deictic date takes part in arithmetic like any other" do
+      expected = Date.utc_today() |> Date.add(21) |> expected_date()
+
+      assert answer("today + 3 weeks") == expected
+    end
+
+    defp expected_date(date) do
+      {:ok, formatted} = Localize.Date.to_string(date, locale: :en, format: :long)
+      formatted
+    end
+  end
+
+  describe "clock-time spans" do
+    # Soulver's own documentation concedes the minus sign is ambiguous with
+    # clock times — most people read `5pm - 7pm` as a range and `5pm - 2pm` as
+    # a subtraction. Measuring the gap makes both readings agree, so that is
+    # what both `to` and `-` do here.
+    test "a span written with 'to'" do
+      assert answer("7:30 to 20:45") == "13 hours, 15 minutes"
+      assert answer("9:45 am to 6:35 pm") == "8 hours, 50 minutes"
+    end
+
+    test "a span written with a minus sign" do
+      assert answer("5pm - 7pm") == "2 hours"
+    end
+
+    test "a second time earlier on the clock means the following day" do
+      # Rather than eleven hours in the negative direction.
+      assert answer("4pm to 3am") == "11 hours"
+    end
+
+    test "spans are rendered in the sheet's locale" do
+      assert answer("7:30 to 20:45", locale: :de) == "13 Stunden, 15 Minuten"
+    end
+  end
+
+  describe "time zones" do
+    # These assert the *offset arithmetic* rather than a literal clock face,
+    # because the answer depends on which side of a daylight-saving boundary
+    # the suite runs on. Comparing against a freshly computed conversion keeps
+    # the test honest all year round.
+    defp converted(time, from_zone, to_zone) do
+      {:ok, datetime} = DateTime.new(Date.utc_today(), time, from_zone)
+      {:ok, shifted} = DateTime.shift_zone(datetime, to_zone)
+
+      {:ok, formatted} =
+        Localize.Time.to_string(DateTime.to_time(shifted), locale: :en, format: :short)
+
+      formatted
+    end
+
+    test "a city to a city" do
+      assert answer("6pm Sydney in Chicago") ==
+               converted(~T[18:00:00], "Australia/Sydney", "America/Chicago")
+    end
+
+    test "a multi-word city name" do
+      assert answer("9am New York in London") ==
+               converted(~T[09:00:00], "America/New_York", "Europe/London")
+    end
+
+    test "an airport code, and a country standing for its capital" do
+      assert answer("7:30am LAX in Japan") ==
+               converted(~T[07:30:00], "America/Los_Angeles", "Asia/Tokyo")
+    end
+
+    test "a zone abbreviation, resolved by Calendrical rather than our table" do
+      assert answer("2am PST to GMT") ==
+               converted(~T[02:00:00], "America/Los_Angeles", "Etc/GMT")
+    end
+
+    test "a city name in ordinary prose is not a clock reading" do
+      # The whole reason zones are never standalone values. Were they, every
+      # note mentioning a city would sprout a time in the margin. What matters
+      # is that no answer is *shown* — whether the line records a `:bare_zone`
+      # error along the way is an internal detail.
+      assert shown("flight to Paris") == nil
+      assert shown("meeting in London next week") == nil
+      assert shown("Paris") == nil
+    end
+
+    test "a time with no source zone cannot be converted" do
+      # `6pm in Chicago` leaves out where 6pm *is*. Guessing the reader's own
+      # zone would give a different answer for every reader.
+      assert answer("6pm in Chicago") == :zone_without_source
     end
   end
 

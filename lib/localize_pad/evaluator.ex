@@ -30,6 +30,7 @@ defmodule LocalizePad.Evaluator do
   alias Localize.Unit
   alias Localize.Unit.Math
   alias LocalizePad.{Parser, Temporal}
+  alias LocalizePad.Temporal.Zones
 
   # `Decimal` is in the lattice even though nothing in M1 produces one: the
   # number scanner can be asked for decimals, `Localize.Unit` values may carry
@@ -44,6 +45,8 @@ defmodule LocalizePad.Evaluator do
           | Tempo.t()
           | Tempo.Duration.t()
           | Localize.Duration.t()
+          | DateTime.t()
+          | Zones.t()
   @type environment :: %{optional(String.t()) => value()}
 
   @doc """
@@ -89,6 +92,10 @@ defmodule LocalizePad.Evaluator do
 
   def eval({:temporal, fields}, _environment) do
     Temporal.resolve(fields)
+  end
+
+  def eval({:zone, zone}, _environment) do
+    {:ok, zone}
   end
 
   def eval({:variable, name}, environment) do
@@ -210,6 +217,25 @@ defmodule LocalizePad.Evaluator do
     end)
   end
 
+  # ── Zones ───────────────────────────────────────────────────────────────
+
+  # `6pm Sydney` reaches here as juxtaposition — the same implicit
+  # multiplication that builds `3 meters` — because a zone sits beside a time
+  # exactly as a unit sits beside a number.
+  defp apply_operator(:mul, %Tempo{} = left, %Zones{} = zone) do
+    Temporal.in_zone(left, zone)
+  end
+
+  defp apply_operator(:mul, %Zones{} = zone, %Tempo{} = right) do
+    Temporal.in_zone(right, zone)
+  end
+
+  # A zone with nothing to anchor it is not a value. `flight to Paris` must
+  # stay an ordinary note rather than becoming a clock reading, so this
+  # declines rather than inventing "the time in Paris".
+  defp apply_operator(_operator, %Zones{}, _right), do: {:error, :bare_zone}
+  defp apply_operator(_operator, _left, %Zones{}), do: {:error, :bare_zone}
+
   # ── Temporal arithmetic ─────────────────────────────────────────────────
 
   # `June 12 + 3 weeks`. The duration arrives as an ordinary unit quantity,
@@ -244,14 +270,34 @@ defmodule LocalizePad.Evaluator do
          {:ok, to} <- Tempo.to_date(right) do
       Localize.Duration.new(from, to)
     else
-      # Time-only values have no date to span, so fall back to Tempo's exact
-      # measurement rather than declining outright.
-      _not_a_date -> normalize(Tempo.duration(left, right))
+      # Time-only values have no date to span across, so they get the
+      # clock-time reading instead.
+      _not_a_date -> clock_span(left, right)
     end
   end
 
   defp apply_operator(operator, left, right) do
     {:error, {:unsupported_operation, operator, describe(left), describe(right)}}
+  end
+
+  # Two clock times bound a span rather than subtracting. Soulver's own
+  # documentation concedes the minus sign is ambiguous here — `5pm - 7pm` is
+  # read by most people as a range and `5pm - 2pm` as a subtraction — and
+  # resolves it by always measuring the gap. So do we: the answer is a
+  # duration either way, which is what makes both readings agree.
+  #
+  # When the second time is earlier on the clock it means the following day,
+  # so `4pm to 3am` is eleven hours rather than negative thirteen.
+  defp clock_span(left, right) do
+    with {:ok, from} <- Temporal.to_time(left),
+         {:ok, to} <- Temporal.to_time(right) do
+      seconds = Time.diff(to, from)
+      seconds = if seconds < 0, do: seconds + 86_400, else: seconds
+
+      normalize(Localize.Duration.new_from_seconds(seconds))
+    else
+      _not_a_time -> normalize(Tempo.duration(left, right))
+    end
   end
 
   defp shift(%Tempo{} = tempo, duration, :add) do
@@ -283,6 +329,29 @@ defmodule LocalizePad.Evaluator do
     Unit.convert(source, target.name)
   end
 
+  # `7:30 to 20:45` and `3 March to 30 May` read `to` as a range rather than a
+  # conversion — the answer is how much time lies between the two, which is the
+  # same thing the minus sign produces for a pair of temporal values.
+  defp convert(%Tempo{} = from, %Tempo{} = to) do
+    apply_operator(:sub, from, to)
+  end
+
+  # `6pm Sydney in Chicago` — the source is already anchored to a zone, so this
+  # is the shift to the target one.
+  defp convert(%DateTime{} = datetime, %Zones{name: name}) do
+    case DateTime.shift_zone(datetime, name) do
+      {:ok, shifted} -> {:ok, shifted}
+      {:error, reason} -> {:error, {:unknown_zone, name, reason}}
+    end
+  end
+
+  # A bare time with no source zone cannot be converted — `6pm in Chicago`
+  # leaves out where 6pm *is*, and guessing the sheet's own zone would be a
+  # different answer for every reader.
+  defp convert(%Tempo{}, %Zones{}) do
+    {:error, :zone_without_source}
+  end
+
   # Converting a bare number has no meaning yet. `20% as decimal` and
   # `$100 as number` are phrase forms that arrive with the percentage and money
   # work; until then this declines rather than inventing a reading.
@@ -294,6 +363,8 @@ defmodule LocalizePad.Evaluator do
   defp describe(%Tempo{}), do: :temporal
   defp describe(%Tempo.Duration{}), do: :duration
   defp describe(%Localize.Duration{}), do: :duration
+  defp describe(%Zones{name: name}), do: name
+  defp describe(%DateTime{}), do: :zoned_time
   defp describe(value) when is_number(value), do: :number
   defp describe(other), do: other
 end

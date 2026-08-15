@@ -30,6 +30,8 @@ defmodule LocalizePad.Parser do
   * `{:temporal, fields}` — a date or time, as the partial field map the
     scanner recovered.
 
+  * `{:zone, zone}` — a time zone, only meaningful next to a temporal value.
+
   * `{:neg, expr}`
 
   * `{:binary, operator, left, right}` where operator is `:add`, `:sub`,
@@ -85,6 +87,7 @@ defmodule LocalizePad.Parser do
           | {:variable, String.t()}
           | {:line_ref, pos_integer()}
           | {:temporal, map()}
+          | {:zone, LocalizePad.Temporal.Zones.t()}
           | {:neg, ast()}
           | {:binary, atom(), ast(), ast()}
           | {:convert, ast(), ast()}
@@ -174,6 +177,10 @@ defmodule LocalizePad.Parser do
 
   defp parse_prefix([%Token{kind: :temporal, value: fields} | rest], _variables) do
     {:ok, {:temporal, fields}, rest}
+  end
+
+  defp parse_prefix([%Token{kind: :zone, value: zone} | rest], _variables) do
+    {:ok, {:zone, zone}, rest}
   end
 
   defp parse_prefix([%Token{kind: :operator, value: :minus} | rest], variables) do
@@ -272,7 +279,7 @@ defmodule LocalizePad.Parser do
   # Anything that could begin an operand, sitting next to the previous operand,
   # is implicit multiplication: `3 meters`, `kg m`, `2 (1 + 1)`.
   defp infix_operator([%Token{kind: kind} | _rest] = tokens, _variables)
-       when kind in [:number, :unit, :line_ref, :temporal] do
+       when kind in [:number, :unit, :line_ref, :temporal, :zone] do
     {:ok, :juxtapose, @juxtaposition, tokens}
   end
 
@@ -297,7 +304,7 @@ defmodule LocalizePad.Parser do
         false
 
       [%Token{kind: kind} | _rest]
-      when kind in [:number, :unit, :word, :line_ref, :temporal] ->
+      when kind in [:number, :unit, :word, :line_ref, :temporal, :zone] ->
         true
 
       [%Token{kind: :operator, value: operator} | _rest] ->

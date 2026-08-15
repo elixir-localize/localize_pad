@@ -38,7 +38,7 @@ defmodule LocalizePad.Tokenizer do
   """
 
   alias LocalizePad.{Lexicon, Token}
-  alias LocalizePad.Temporal.Scanner
+  alias LocalizePad.Temporal.{Scanner, Zones}
 
   # Multi-character operators must be tried before their single-character
   # prefixes, hence "->" and "**" first. The `u` modifier is required: without
@@ -109,6 +109,7 @@ defmodule LocalizePad.Tokenizer do
         {:text, text} -> tokenize_text(text, locale)
       end)
       |> join_line_references()
+      |> join_zones()
 
     {:ok, tokens}
   end
@@ -139,6 +140,44 @@ defmodule LocalizePad.Tokenizer do
 
   defp join_line_references([token | rest]), do: [token | join_line_references(rest)]
   defp join_line_references([]), do: []
+
+  # `New York` and `Hong Kong` are two words each, so zone names are matched
+  # over runs of word tokens rather than one at a time. Longest run first, so
+  # `New York` wins over a hypothetical `York`.
+  @maximum_zone_words 3
+
+  defp join_zones([]), do: []
+
+  defp join_zones([%Token{kind: :word} | _rest] = tokens) do
+    case longest_zone(tokens) do
+      {:ok, zone, source, consumed} ->
+        [Token.new(:zone, zone, source) | tokens |> Enum.drop(consumed) |> join_zones()]
+
+      :error ->
+        [hd(tokens) | tokens |> tl() |> join_zones()]
+    end
+  end
+
+  defp join_zones([token | rest]), do: [token | join_zones(rest)]
+
+  defp longest_zone(tokens) do
+    words = tokens |> Enum.take(@maximum_zone_words) |> Enum.take_while(&(&1.kind == :word))
+
+    words
+    |> Enum.count()
+    |> countdown()
+    |> Enum.find_value(:error, fn length ->
+      source = words |> Enum.take(length) |> Enum.map_join(" ", & &1.source)
+
+      case Zones.resolve(source) do
+        {:ok, zone} -> {:ok, zone, source, length}
+        :error -> nil
+      end
+    end)
+  end
+
+  defp countdown(0), do: []
+  defp countdown(count), do: Enum.to_list(count..1//-1)
 
   # `scan/2` yields numbers already parsed, and everything else as text runs.
   defp tokenize_element(number, _locale) when is_number(number) do
@@ -182,6 +221,13 @@ defmodule LocalizePad.Tokenizer do
   # A word may be a keyword, a unit, both, or neither. Both readings are kept
   # when they exist — `in` is the conversion keyword and also `inch`.
   defp classify_word(word, locale) do
+    case Lexicon.deictic(word, lexicon_locale(locale)) do
+      {:ok, moment} -> Token.new(:temporal, {:deictic, moment}, word)
+      :error -> classify_ordinary_word(word, locale)
+    end
+  end
+
+  defp classify_ordinary_word(word, locale) do
     keyword = Lexicon.role(word, lexicon_locale(locale))
     unit = resolve_unit(word)
 

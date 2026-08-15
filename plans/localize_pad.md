@@ -591,7 +591,7 @@ columns therefore share one font stack and line height, set from the same custom
 Deferred: styling the answer gutter from `Localize.Number.to_parts/2`. It is cosmetic until the
 value lattice is richer, and worth doing when money and temporal answers need visual structure.
 
-**M3 — Time, foundations. ✅ Mostly done.** Moved ahead of money, because time is now the
+**M3 — Time, foundations. ✅ Done.** Moved ahead of money, because time is now the
 headline. Wire
 `Calendrical.parse/2` into stage 2 with span-candidate windows; adopt `Tempo.t()` as *the*
 temporal value; relative-date vocabulary, nearest-year resolution, clock-time semantics
@@ -614,9 +614,23 @@ digit-separator-digit matches a decimal point. A separated date now requires *tw
 The cost is that `3/4` is not read as a date — correct, since it is genuinely indistinguishable
 from division.
 
-Still outstanding in M3: clock-time semantics beyond parsing (`5pm - 7pm` as a span),
-`Calendrical.Interval` for quarter and week spans (currently declined rather than guessed),
-`Kday` weekday phrases, and timezone resolution with the city/IATA table.
+Clock-time spans landed too, and they resolve Soulver's documented ambiguity the same way it
+does: `to` and `-` between two clock times both measure the gap, so `5pm - 7pm` and `5pm - 2pm`
+agree at two hours, and a second time earlier on the clock means the following day
+(`4pm to 3am` is eleven hours).
+
+Timezone conversion works across cities, countries, airport codes and abbreviations —
+`9am New York in London`, `6pm Sydney in Chicago`, `7:30am LAX in Japan`, `2am PST to GMT`. Two
+findings shaped it. First, `Calendrical.parse/2` already captures a trailing zone string in its
+field map without resolving it, so honouring that field got abbreviations and IANA names for
+free. Second, and more important: **a zone is never a value on its own**. Were `Paris` a value,
+every note mentioning a city would sprout a clock reading in the margin, so a bare zone is
+declined and only `6pm Sydney` or `… in Chicago` means anything. The city table is curated
+rather than derived from all 597 IANA zones, for the same reason — the derived tail is full of
+names that collide with ordinary words.
+
+Still outstanding in M3: `Calendrical.Interval` for quarter and week spans (currently declined
+rather than guessed), and `Kday` weekday phrases (`next Thursday`).
 
 **M4 — Percentages and money.** The `Percentage` type against its truth table, `Rate`,
 `Money` values, currency conversion with `Money.ExchangeRates`, sales tax, the `Money.Financial`
