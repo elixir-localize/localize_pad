@@ -102,6 +102,10 @@ defmodule LocalizePad.Value do
     {:ok, summarise(formatted, length(dates), locale)}
   end
 
+  def format(%LocalizePad.Temporal.Window{} = window, options) do
+    LocalizePad.Temporal.Window.format(window, options)
+  end
+
   def format(%LocalizePad.Rate{} = rate, options) do
     LocalizePad.Rate.format(rate, options)
   end
@@ -159,6 +163,7 @@ defmodule LocalizePad.Value do
           | :money
           | :rate
           | :temporal_set
+          | :window
           | :unknown
   def kind(%Unit{}), do: :quantity
   def kind(%Tempo{}), do: :temporal
@@ -169,6 +174,7 @@ defmodule LocalizePad.Value do
   def kind(%Money{}), do: :money
   def kind(%LocalizePad.Rate{}), do: :rate
   def kind(%Tempo.IntervalSet{}), do: :temporal_set
+  def kind(%LocalizePad.Temporal.Window{}), do: :window
   def kind(value) when is_number(value), do: :number
   def kind(_other), do: :unknown
 

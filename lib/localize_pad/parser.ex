@@ -56,30 +56,33 @@ defmodule LocalizePad.Parser do
   # {left, right} binding powers. Right < left makes an operator
   # right-associative, which is why `:pow` is {11, 10}.
   @binding_powers %{
-    to: {1, 2},
-    plus: {3, 4},
-    minus: {3, 4},
-    times: {5, 6},
-    divide: {5, 6},
-    per: {5, 6},
-    power: {11, 10},
+    # Loosest of all, so both operands are complete spans:
+    # `9am to 5pm London and 9am to 5pm New York`.
+    intersect: {1, 2},
+    to: {3, 4},
+    plus: {5, 6},
+    minus: {5, 6},
+    times: {7, 8},
+    divide: {7, 8},
+    per: {7, 8},
+    power: {13, 12},
     # Relative-date phrases bind as loosely as `to`, so the whole expression
     # on either side is the operand: `3 weeks + 2 days after March 14`.
-    after: {1, 2},
-    before: {1, 2},
+    after: {3, 4},
+    before: {3, 4},
     # `10% of 200` and its siblings. Loose, so the whole expression on either
     # side is the operand.
-    of: {1, 2},
-    off: {1, 2},
-    on: {1, 2}
+    of: {3, 4},
+    off: {3, 4},
+    on: {3, 4}
   }
 
   # Juxtaposition binds tighter than explicit `*` and `/`, so `kg m / s` parses
   # as `(kg × m) / s` — matching GNU `units`, and matching what people mean.
-  @juxtaposition {7, 8}
+  @juxtaposition {9, 10}
 
   # Unary minus binds tighter than any infix operator except exponentiation.
-  @prefix_binding_power 9
+  @prefix_binding_power 11
 
   @operator_nodes %{
     plus: :add,
@@ -290,6 +293,7 @@ defmodule LocalizePad.Parser do
   end
 
   defp combine(left, :to, right), do: {:convert, left, right}
+  defp combine(left, :intersect, right), do: {:binary, :intersect, left, right}
 
   # `3 weeks after March 14` is `March 14 + 3 weeks` with the operands
   # reversed, and `3 days before` is the same with a subtraction.

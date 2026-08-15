@@ -716,9 +716,24 @@ Set answers now render as a collapsed summary with the count *first* (`5 dates �
 …`), because the margin truncates from the right and "how many" is the part worth keeping. The
 expansion panel from §5.5 is still to come.
 
-Still outstanding in M5: timezone overlap ("when are we all awake"), `.ics` import, territory-
-aware workdays and holidays, `Tempo.explain/1` in the answer panel, dependency scheduling, and
-uncertainty/cross-calendar.
+Timezone overlap followed, and it is the §4b line: `9am to 5pm London and 9am to 5pm New York`
+answers "3 hours", and the Tokyo pairings answer "no overlap" — which is what a distributed team
+needs to know and currently works out wrongly on the back of an envelope.
+
+Getting there needed one change of representation. A clock span was a duration; it is now an
+interval that *renders* as its length. The familiar answer is untouched — `7:30 to 20:45` is
+still "13 hours, 15 minutes" — but the endpoints survive, and comparing two spans becomes
+possible. Attaching a zone re-reads the same wall-clock times in that zone rather than shifting
+the instants, because 9am London moved to New York is New York's 9am, not 4am.
+
+An empty overlap renders as "no overlap" rather than "0 hours": the question being asked is
+whether they meet at all, and a zero is too easily read as a rounding artefact.
+
+The `and` operator required renumbering every binding power to make room beneath `to`, so that
+both operands are whole spans.
+
+Still outstanding in M5: `.ics` import, territory-aware workdays and holidays, `Tempo.explain/1`
+in the answer panel, dependency scheduling, and uncertainty/cross-calendar.
 
 **M6 — The localization thesis.** Localized operator lexicon for `de`, `fr`, `es`, `ja`. Locale
 switch re-parses the document. Dates arrive already localized from M3, so this is purely about

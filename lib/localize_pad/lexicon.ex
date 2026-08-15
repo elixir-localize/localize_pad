@@ -32,7 +32,7 @@ defmodule LocalizePad.Lexicon do
 
   """
 
-  @type role :: :to | :per | :after | :before | :of | :off | :on
+  @type role :: :to | :per | :after | :before | :of | :off | :on | :intersect
 
   @type deictic :: :now | :today | :tomorrow | :yesterday
 
@@ -57,7 +57,11 @@ defmodule LocalizePad.Lexicon do
       # than a convenience.
       of: ["of"],
       off: ["off"],
-      on: ["on"]
+      on: ["on"],
+
+      # Set intersection over spans of time. "when are London and New York
+      # both at work" is the question; `and` is how people write it.
+      intersect: ["and", "∩", "overlap", "overlapping"]
     }
   }
 

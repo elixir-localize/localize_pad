@@ -3,7 +3,7 @@ defmodule LocalizePad.TemporalTest do
 
   alias LocalizePad.Sheet
   alias LocalizePad.Temporal
-  alias LocalizePad.Temporal.Scanner
+  alias LocalizePad.Temporal.{Scanner, Window}
 
   doctest LocalizePad.Temporal
   doctest LocalizePad.Temporal.Scanner
@@ -258,6 +258,58 @@ defmodule LocalizePad.TemporalTest do
       # `6pm in Chicago` leaves out where 6pm *is*. Guessing the reader's own
       # zone would give a different answer for every reader.
       assert answer("6pm in Chicago") == :zone_without_source
+    end
+  end
+
+  describe "overlapping windows" do
+    doctest LocalizePad.Temporal.Window
+
+    # The question a distributed team actually has, and the one no notepad
+    # calculator has answered. Asserted against freshly computed conversions so
+    # the suite is right on both sides of a daylight-saving boundary.
+    defp overlap_hours(from_zone, to_zone) do
+      {:ok, left} = Window.new(~T[09:00:00], ~T[17:00:00], zone: from_zone)
+      {:ok, right} = Window.new(~T[09:00:00], ~T[17:00:00], zone: to_zone)
+
+      left |> Window.intersect(right) |> Window.hours()
+    end
+
+    test "two cities that share part of a working day" do
+      expected = overlap_hours("Europe/London", "America/New_York")
+
+      assert expected > 0
+
+      assert answer("9am to 5pm London and 9am to 5pm New York") ==
+               expected |> trunc() |> then(&"#{&1} hours")
+    end
+
+    test "two cities that share none of it" do
+      assert overlap_hours("Europe/London", "Asia/Tokyo") == 0.0
+      assert answer("9am to 5pm London and 9am to 5pm Tokyo") == "no overlap"
+      assert answer("9am to 5pm New York and 9am to 5pm Tokyo") == "no overlap"
+    end
+
+    test "an empty overlap says so rather than reading as zero" do
+      # "0 hours" is too easily read as a rounding artefact. The question is
+      # whether they ever meet, and the answer is no.
+      assert answer("9am to 5pm London and 9am to 5pm Tokyo") == "no overlap"
+    end
+
+    test "a clock span still renders as its length" do
+      # A span is now an interval internally, so that endpoints survive for
+      # set operations. Nothing about the familiar answer changes.
+      assert answer("7:30 to 20:45") == "13 hours, 15 minutes"
+      assert answer("4pm to 3am") == "11 hours"
+      assert answer("5pm - 7pm") == "2 hours"
+    end
+
+    test "a zone re-reads the wall clock rather than shifting the instants" do
+      # 9am London moved to New York is New York's 9am, not 4am.
+      {:ok, window} = Window.new(~T[09:00:00], ~T[17:00:00], zone: "Europe/London")
+      {:ok, moved} = Window.in_zone(window, "America/New_York")
+
+      assert moved.from |> DateTime.to_time() == ~T[09:00:00]
+      assert moved.from.time_zone == "America/New_York"
     end
   end
 

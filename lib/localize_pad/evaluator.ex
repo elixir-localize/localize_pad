@@ -30,7 +30,7 @@ defmodule LocalizePad.Evaluator do
   alias Localize.Unit
   alias Localize.Unit.Math
   alias LocalizePad.{Finance, Parser, Percentage, Rate, SalesTax, Temporal}
-  alias LocalizePad.Temporal.{Recurrence, Zones}
+  alias LocalizePad.Temporal.{Recurrence, Window, Zones}
 
   # `Decimal` is in the lattice even though nothing in M1 produces one: the
   # number scanner can be asked for decimals, `Localize.Unit` values may carry
@@ -56,6 +56,7 @@ defmodule LocalizePad.Evaluator do
           | Rate.t()
           | SalesTax.t()
           | Tempo.IntervalSet.t()
+          | Window.t()
   @type environment :: %{optional(String.t()) => value()}
 
   @doc """
@@ -402,6 +403,24 @@ defmodule LocalizePad.Evaluator do
     Math.mult(right, Percentage.to_decimal(left))
   end
 
+  # ── Windows ─────────────────────────────────────────────────────────────
+
+  # `9am to 5pm London and 9am to 5pm New York`. The comparison happens on the
+  # underlying instants, so it is correct across zones without this knowing
+  # anything about offsets.
+  defp apply_operator(:intersect, %Window{} = left, %Window{} = right) do
+    {:ok, Window.intersect(left, right)}
+  end
+
+  # A window juxtaposed with a zone is that window read in that zone.
+  defp apply_operator(:mul, %Window{} = window, %Zones{name: zone}) do
+    Window.in_zone(window, zone)
+  end
+
+  defp apply_operator(:mul, %Zones{name: zone}, %Window{} = window) do
+    Window.in_zone(window, zone)
+  end
+
   # ── Zones ───────────────────────────────────────────────────────────────
 
   # `6pm Sydney` reaches here as juxtaposition — the same implicit
@@ -513,13 +532,10 @@ defmodule LocalizePad.Evaluator do
   #
   # When the second time is earlier on the clock it means the following day,
   # so `4pm to 3am` is eleven hours rather than negative thirteen.
-  defp clock_span(left, right) do
+  defp clock_span(left, right, zone \\ "Etc/UTC") do
     with {:ok, from} <- Temporal.to_time(left),
          {:ok, to} <- Temporal.to_time(right) do
-      seconds = Time.diff(to, from)
-      seconds = if seconds < 0, do: seconds + 86_400, else: seconds
-
-      normalize(Localize.Duration.new_from_seconds(seconds))
+      Window.new(from, to, zone: zone)
     else
       _not_a_time -> normalize(Tempo.duration(left, right))
     end
@@ -562,6 +578,16 @@ defmodule LocalizePad.Evaluator do
   # same thing the minus sign produces for a pair of temporal values.
   defp convert(%Tempo{} = from, %Tempo{} = to) do
     apply_operator(:sub, from, to)
+  end
+
+  # `9am to 5pm London`. The zone reaches the right-hand endpoint first, since
+  # juxtaposition binds tighter than `to` — and taking the span's zone from
+  # that endpoint is exactly right, because both endpoints are wall-clock
+  # readings in the same place.
+  defp convert(%Tempo{} = from, %DateTime{} = to) do
+    with {:ok, time} <- Temporal.to_time(from) do
+      Window.new(time, DateTime.to_time(to), zone: to.time_zone)
+    end
   end
 
   # `6pm Sydney in Chicago` — the source is already anchored to a zone, so this
@@ -615,6 +641,7 @@ defmodule LocalizePad.Evaluator do
   defp describe(%Percentage{}), do: :percentage
   defp describe(%Money{currency: code}), do: code
   defp describe(%Rate{}), do: :rate
+  defp describe(%Window{}), do: :window
   defp describe(%SalesTax{name: name}), do: name
   defp describe(value) when is_number(value), do: :number
   defp describe(other), do: other
