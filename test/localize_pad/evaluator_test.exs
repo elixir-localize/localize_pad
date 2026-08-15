@@ -116,8 +116,12 @@ defmodule LocalizePad.EvaluatorTest do
   end
 
   describe "prose" do
-    test "the classic mixed line" do
-      assert value("$19 for breakfast + $22 for the uber") == 41
+    test "the classic mixed line, which is money once the dollars are written" do
+      assert value("$19 for breakfast + $22 for the uber") == Money.new(:USD, 41)
+    end
+
+    test "the same line without currency markers stays a plain number" do
+      assert value("19 for breakfast + 22 for the uber") == 41
     end
   end
 end

@@ -299,9 +299,18 @@ defmodule LocalizePad.Sheet do
     end
   end
 
+  defp accumulate(%Money{} = total, %Money{} = value) do
+    case Money.add(total, value) do
+      {:ok, sum} -> sum
+      # Two different currencies cannot be added without a rate, so the second
+      # is skipped rather than the total being abandoned.
+      {:error, _reason} -> total
+    end
+  end
+
   defp accumulate(total, _value), do: total
 
-  defp summable?(value), do: Value.kind(value) in [:number, :quantity]
+  defp summable?(value), do: Value.kind(value) in [:number, :quantity, :money]
 
   defp format(value, locale) do
     case Value.format(value, locale: locale) do

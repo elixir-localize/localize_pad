@@ -25,6 +25,9 @@ defmodule LocalizePad.Token do
           | :line_ref
           | :temporal
           | :zone
+          | :percentage
+          | :money
+          | :currency
 
   @type t :: %__MODULE__{
           kind: kind(),

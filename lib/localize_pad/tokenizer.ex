@@ -37,14 +37,14 @@ defmodule LocalizePad.Tokenizer do
 
   """
 
-  alias LocalizePad.{Lexicon, Token}
+  alias LocalizePad.{Currency, Lexicon, Token}
   alias LocalizePad.Temporal.{Scanner, Zones}
 
   # Multi-character operators must be tried before their single-character
   # prefixes, hence "->" and "**" first. The `u` modifier is required: without
   # it the character class matches bytes, and `×` (two UTF-8 bytes) is torn in
   # half rather than recognised.
-  @operator_pattern ~r/(->|\*\*|[+\-*\/^()=,;×÷])/u
+  @operator_pattern ~r/(->|\*\*|[+\-*\/^()=,;×÷%])/u
 
   @operators %{
     "+" => :plus,
@@ -59,7 +59,8 @@ defmodule LocalizePad.Tokenizer do
     ")" => :rparen,
     "=" => :assign,
     "," => :comma,
-    ";" => :semicolon
+    ";" => :semicolon,
+    "%" => :percent
   }
 
   @doc """
@@ -109,6 +110,9 @@ defmodule LocalizePad.Tokenizer do
         {:text, text} -> tokenize_text(text, locale)
       end)
       |> join_line_references()
+      |> join_percentages()
+      |> join_money(locale)
+      |> mark_currencies(locale)
       |> join_zones()
 
     {:ok, tokens}
@@ -140,6 +144,98 @@ defmodule LocalizePad.Tokenizer do
 
   defp join_line_references([token | rest]), do: [token | join_line_references(rest)]
   defp join_line_references([]), do: []
+
+  # `20%` and `20 percent` are one value, not a number beside a symbol.
+  defp join_percentages([]), do: []
+
+  defp join_percentages([
+         %Token{kind: :number, value: value},
+         %Token{kind: :operator, value: :percent} | rest
+       ])
+       when is_number(value) do
+    [Token.new(:percentage, value, "#{value}%") | join_percentages(rest)]
+  end
+
+  # `percent` is itself a CLDR unit, so it reaches here classified as `:unit`
+  # rather than `:word`. Both spellings mean the same thing to a reader.
+  defp join_percentages([
+         %Token{kind: :number, value: value} = number,
+         %Token{kind: kind, source: word} = follower | rest
+       ])
+       when is_number(value) and kind in [:word, :unit] do
+    if String.downcase(word) in ~w(percent percentage) do
+      [Token.new(:percentage, value, "#{value} #{word}") | join_percentages(rest)]
+    else
+      # Put both tokens back exactly as they were. Rebuilding the follower from
+      # its source would lose a unit token's resolved value — `kg` would go
+      # back in place of `kilogram`, and the unit would then be unknown.
+      [number | join_percentages([follower | rest])]
+    end
+  end
+
+  defp join_percentages([token | rest]), do: [token | join_percentages(rest)]
+
+  # Money is only money when it is written as such — `$19`, `19 USD`,
+  # `USD 19`. A bare number stays a number, which is the whole point of
+  # `LocalizePad.Currency`.
+  defp join_money([], _locale), do: []
+
+  defp join_money(
+         [%Token{kind: :word, source: marker}, %Token{kind: :number, value: amount} | rest],
+         locale
+       )
+       when is_number(amount) do
+    case Currency.resolve(marker, locale) do
+      {:ok, code} ->
+        [money_token(code, amount, "#{marker}#{amount}") | join_money(rest, locale)]
+
+      :error ->
+        [Token.new(:word, marker, marker) | join_money([number_token(amount) | rest], locale)]
+    end
+  end
+
+  defp join_money(
+         [%Token{kind: :number, value: amount}, %Token{kind: :word, source: marker} | rest],
+         locale
+       )
+       when is_number(amount) do
+    case Currency.resolve(marker, locale) do
+      {:ok, code} ->
+        [money_token(code, amount, "#{amount} #{marker}") | join_money(rest, locale)]
+
+      :error ->
+        [number_token(amount) | join_money([Token.new(:word, marker, marker) | rest], locale)]
+    end
+  end
+
+  defp join_money([token | rest], locale), do: [token | join_money(rest, locale)]
+
+  defp money_token(code, amount, source) do
+    Token.new(:money, Money.new(code, to_decimal(amount)), source)
+  end
+
+  defp number_token(amount), do: Token.new(:number, amount, to_string(amount))
+
+  # Money is decimal all the way down; going through the float would give
+  # 19.999999999999996 for amounts a person typed exactly.
+  defp to_decimal(amount) when is_integer(amount), do: Decimal.new(amount)
+  defp to_decimal(amount) when is_float(amount), do: Decimal.from_float(amount)
+
+  # A currency code with no amount beside it is a conversion *target*:
+  # the `EUR` in `10 USD in EUR`. Runs after `join_money/2` so a code that
+  # belongs to an amount has already been consumed.
+  defp mark_currencies(tokens, locale) do
+    Enum.map(tokens, fn
+      %Token{kind: :word, source: word} = token ->
+        case Currency.resolve(word, locale) do
+          {:ok, code} -> Token.new(:currency, code, word)
+          :error -> token
+        end
+
+      token ->
+        token
+    end)
+  end
 
   # `New York` and `Hong Kong` are two words each, so zone names are matched
   # over runs of word tokens rather than one at a time. Longest run first, so

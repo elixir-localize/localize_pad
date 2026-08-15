@@ -103,18 +103,29 @@ defmodule LocalizePad.TokenizerTest do
 
   describe "prose tolerance" do
     test "words with no arithmetic meaning survive as :word rather than failing" do
-      assert kinds("$19 for breakfast + $22 for the uber") == [
-               {:word, "$"},
+      assert kinds("19 for breakfast + 22 for the uber") == [
                {:number, 19},
                {:word, "for"},
                {:word, "breakfast"},
                {:operator, :plus},
-               {:word, "$"},
                {:number, 22},
                {:word, "for"},
                {:word, "the"},
                {:word, "uber"}
              ]
+    end
+
+    test "a currency marker binds to its amount and the prose still falls away" do
+      assert [
+               {:money, _breakfast},
+               {:word, "for"},
+               {:word, "breakfast"},
+               {:operator, :plus},
+               {:money, _uber},
+               {:word, "for"},
+               {:word, "the"},
+               {:word, "uber"}
+             ] = kinds("$19 for breakfast + $22 for the uber")
     end
 
     test "an empty line tokenizes to nothing" do

@@ -29,7 +29,7 @@ defmodule LocalizePad.Evaluator do
 
   alias Localize.Unit
   alias Localize.Unit.Math
-  alias LocalizePad.{Parser, Temporal}
+  alias LocalizePad.{Parser, Percentage, Temporal}
   alias LocalizePad.Temporal.Zones
 
   # `Decimal` is in the lattice even though nothing in M1 produces one: the
@@ -47,6 +47,11 @@ defmodule LocalizePad.Evaluator do
           | Localize.Duration.t()
           | DateTime.t()
           | Zones.t()
+          | Percentage.t()
+          | Money.t()
+          # A conversion target rather than a quantity: the `EUR` in
+          # `10 USD in EUR`.
+          | {:currency, atom()}
   @type environment :: %{optional(String.t()) => value()}
 
   @doc """
@@ -96,6 +101,18 @@ defmodule LocalizePad.Evaluator do
 
   def eval({:zone, zone}, _environment) do
     {:ok, zone}
+  end
+
+  def eval({:percentage, value}, _environment) do
+    {:ok, Percentage.new(value)}
+  end
+
+  def eval({:money, money}, _environment) do
+    {:ok, money}
+  end
+
+  def eval({:currency, code}, _environment) do
+    {:ok, {:currency, code}}
   end
 
   def eval({:variable, name}, environment) do
@@ -217,6 +234,113 @@ defmodule LocalizePad.Evaluator do
     end)
   end
 
+  # ── Money ───────────────────────────────────────────────────────────────
+
+  defp apply_operator(:add, %Money{} = left, %Money{} = right), do: Money.add(left, right)
+  defp apply_operator(:sub, %Money{} = left, %Money{} = right), do: Money.sub(left, right)
+
+  defp apply_operator(:mul, %Money{} = left, right) when is_number(right) do
+    Money.mult(left, right)
+  end
+
+  defp apply_operator(:mul, left, %Money{} = right) when is_number(left) do
+    Money.mult(right, left)
+  end
+
+  defp apply_operator(:div, %Money{} = left, right) when is_number(right) and right != 0 do
+    Money.div(left, right)
+  end
+
+  # Money over money is a ratio, and a ratio is a plain number — `$50 / $200`
+  # is a quarter, not a quarter of a dollar.
+  defp apply_operator(:div, %Money{} = left, %Money{} = right) do
+    if Decimal.equal?(right.amount, 0) do
+      {:error, :division_by_zero}
+    else
+      {:ok, Decimal.to_float(Decimal.div(left.amount, right.amount))}
+    end
+  end
+
+  # A percentage of money keeps the currency, and the rounding rules that go
+  # with it: `$300 + 15%` is $345.00.
+  defp apply_operator(operator, %Money{} = left, %Percentage{} = right)
+       when operator in [:add, :sub] do
+    with {:ok, portion} <- Money.mult(left, Percentage.to_decimal(right)) do
+      apply_operator(operator, left, portion)
+    end
+  end
+
+  defp apply_operator(:mul, %Money{} = left, %Percentage{} = right) do
+    Money.mult(left, Percentage.to_decimal(right))
+  end
+
+  defp apply_operator(:mul, %Percentage{} = left, %Money{} = right) do
+    Money.mult(right, Percentage.to_decimal(left))
+  end
+
+  # ── Percentages ─────────────────────────────────────────────────────────
+  #
+  # The rules read oddly in isolation but are exactly what people mean. See
+  # the table in `LocalizePad.Percentage`.
+
+  # Two percentages have nothing to be a percentage *of*, so they combine as
+  # percentages: `10% + 20%` is 30%.
+  defp apply_operator(operator, %Percentage{} = left, %Percentage{} = right)
+       when operator in [:add, :sub] do
+    combined = plain(operator, left.value, right.value)
+    {:ok, Percentage.new(combined)}
+  end
+
+  # A bare number in the company of a percentage is read as a proportion, so
+  # `30% + 0.4` is 70% rather than 30.4%.
+  defp apply_operator(operator, %Percentage{} = left, right)
+       when operator in [:add, :sub] and is_number(right) do
+    apply_operator(operator, left, Percentage.coerce(right))
+  end
+
+  # But a percentage applied *to* something is relative to that something:
+  # `200 + 10%` is 220, not 200.1.
+  defp apply_operator(operator, left, %Percentage{} = right)
+       when operator in [:add, :sub] and is_number(left) do
+    {:ok, plain(operator, left, Percentage.of(right, left))}
+  end
+
+  # Multiplication and division always yield a plain number, whichever side
+  # the percentage is on: `50% × 30` and `30 × 50%` are both 15.
+  defp apply_operator(:mul, %Percentage{} = left, right) when is_number(right) do
+    {:ok, Percentage.of(left, right)}
+  end
+
+  defp apply_operator(:mul, left, %Percentage{} = right) when is_number(left) do
+    {:ok, Percentage.of(right, left)}
+  end
+
+  defp apply_operator(:mul, %Percentage{} = left, %Percentage{} = right) do
+    {:ok, Percentage.new(Percentage.of(left, right.value))}
+  end
+
+  defp apply_operator(:div, %Percentage{} = left, right)
+       when is_number(right) and right != 0 do
+    {:ok, Percentage.new(left.value / right)}
+  end
+
+  # A percentage of a quantity keeps the quantity: `100 metres + 15%` is 115
+  # metres, and the unit engine does the arithmetic.
+  defp apply_operator(operator, %Unit{} = left, %Percentage{} = right)
+       when operator in [:add, :sub] do
+    with {:ok, portion} <- Math.mult(left, Percentage.to_decimal(right)) do
+      apply_operator(operator, left, portion)
+    end
+  end
+
+  defp apply_operator(:mul, %Unit{} = left, %Percentage{} = right) do
+    Math.mult(left, Percentage.to_decimal(right))
+  end
+
+  defp apply_operator(:mul, %Percentage{} = left, %Unit{} = right) do
+    Math.mult(right, Percentage.to_decimal(left))
+  end
+
   # ── Zones ───────────────────────────────────────────────────────────────
 
   # `6pm Sydney` reaches here as juxtaposition — the same implicit
@@ -315,6 +439,9 @@ defmodule LocalizePad.Evaluator do
   defp normalize({:error, reason}), do: {:error, reason}
   defp normalize(value), do: {:ok, value}
 
+  defp plain(:add, left, right), do: left + right
+  defp plain(:sub, left, right), do: left - right
+
   defp power(base, exponent) when is_integer(base) and is_integer(exponent) and exponent >= 0 do
     Integer.pow(base, exponent)
   end
@@ -345,6 +472,18 @@ defmodule LocalizePad.Evaluator do
     end
   end
 
+  # `10 USD in EUR`. Exchange rates are fetched by `Money.ExchangeRates`, which
+  # needs an Open Exchange Rates app id; without one the retriever has no rates
+  # and this reports that rather than inventing a number.
+  defp convert(%Money{} = money, {:currency, code}) do
+    # Money reports every failure as `{:error, {exception_module, message}}`,
+    # so there is no second error shape to handle.
+    case Money.to_currency(money, code) do
+      {:ok, converted} -> {:ok, converted}
+      {:error, {_module, _message}} -> {:error, {:no_exchange_rate, money.currency, code}}
+    end
+  end
+
   # A bare time with no source zone cannot be converted — `6pm in Chicago`
   # leaves out where 6pm *is*, and guessing the sheet's own zone would be a
   # different answer for every reader.
@@ -365,6 +504,8 @@ defmodule LocalizePad.Evaluator do
   defp describe(%Localize.Duration{}), do: :duration
   defp describe(%Zones{name: name}), do: name
   defp describe(%DateTime{}), do: :zoned_time
+  defp describe(%Percentage{}), do: :percentage
+  defp describe(%Money{currency: code}), do: code
   defp describe(value) when is_number(value), do: :number
   defp describe(other), do: other
 end

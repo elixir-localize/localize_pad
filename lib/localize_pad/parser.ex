@@ -63,7 +63,12 @@ defmodule LocalizePad.Parser do
     # Relative-date phrases bind as loosely as `to`, so the whole expression
     # on either side is the operand: `3 weeks + 2 days after March 14`.
     after: {1, 2},
-    before: {1, 2}
+    before: {1, 2},
+    # `10% of 200` and its siblings. Loose, so the whole expression on either
+    # side is the operand.
+    of: {1, 2},
+    off: {1, 2},
+    on: {1, 2}
   }
 
   # Juxtaposition binds tighter than explicit `*` and `/`, so `kg m / s` parses
@@ -88,6 +93,9 @@ defmodule LocalizePad.Parser do
           | {:line_ref, pos_integer()}
           | {:temporal, map()}
           | {:zone, LocalizePad.Temporal.Zones.t()}
+          | {:percentage, number()}
+          | {:money, Money.t()}
+          | {:currency, atom()}
           | {:neg, ast()}
           | {:binary, atom(), ast(), ast()}
           | {:convert, ast(), ast()}
@@ -183,6 +191,18 @@ defmodule LocalizePad.Parser do
     {:ok, {:zone, zone}, rest}
   end
 
+  defp parse_prefix([%Token{kind: :percentage, value: value} | rest], _variables) do
+    {:ok, {:percentage, value}, rest}
+  end
+
+  defp parse_prefix([%Token{kind: :money, value: money} | rest], _variables) do
+    {:ok, {:money, money}, rest}
+  end
+
+  defp parse_prefix([%Token{kind: :currency, value: code} | rest], _variables) do
+    {:ok, {:currency, code}, rest}
+  end
+
   defp parse_prefix([%Token{kind: :operator, value: :minus} | rest], variables) do
     with {:ok, operand, rest} <- parse_expression(rest, @prefix_binding_power, variables) do
       {:ok, {:neg, operand}, rest}
@@ -247,6 +267,13 @@ defmodule LocalizePad.Parser do
   # reversed, and `3 days before` is the same with a subtraction.
   defp combine(left, :after, right), do: {:binary, :add, right, left}
   defp combine(left, :before, right), do: {:binary, :sub, right, left}
+
+  # `10% of 200` is the portion; `10% off 200` and `10% on 200` subtract it
+  # from and add it to the whole. All three put the percentage first and the
+  # amount second, which is the reverse of `200 + 10%`.
+  defp combine(left, :of, right), do: {:binary, :mul, right, left}
+  defp combine(left, :off, right), do: {:binary, :sub, right, left}
+  defp combine(left, :on, right), do: {:binary, :add, right, left}
   defp combine(left, :per, right), do: {:binary, :div, left, right}
   defp combine(left, :juxtapose, right), do: {:binary, :mul, left, right}
   defp combine(left, operator, right), do: {:binary, @operator_nodes[operator], left, right}
@@ -279,7 +306,7 @@ defmodule LocalizePad.Parser do
   # Anything that could begin an operand, sitting next to the previous operand,
   # is implicit multiplication: `3 meters`, `kg m`, `2 (1 + 1)`.
   defp infix_operator([%Token{kind: kind} | _rest] = tokens, _variables)
-       when kind in [:number, :unit, :line_ref, :temporal, :zone] do
+       when kind in [:number, :unit, :line_ref, :temporal, :zone, :percentage, :money] do
     {:ok, :juxtapose, @juxtaposition, tokens}
   end
 
@@ -304,7 +331,17 @@ defmodule LocalizePad.Parser do
         false
 
       [%Token{kind: kind} | _rest]
-      when kind in [:number, :unit, :word, :line_ref, :temporal, :zone] ->
+      when kind in [
+             :number,
+             :unit,
+             :word,
+             :line_ref,
+             :temporal,
+             :zone,
+             :percentage,
+             :money,
+             :currency
+           ] ->
         true
 
       [%Token{kind: :operator, value: operator} | _rest] ->

@@ -84,7 +84,14 @@ defmodule LocalizePad.ParserTest do
 
   describe "prose tolerance" do
     test "words carrying no arithmetic meaning are discarded" do
-      assert parse("$19 for breakfast + $22 for the uber") ==
+      # The `$` is not noise — it makes each amount money. Everything between
+      # the amounts is.
+      assert {:ok, {:binary, :add, {:money, _breakfast}, {:money, _uber}}} =
+               parse("$19 for breakfast + $22 for the uber")
+    end
+
+    test "the same line without currency markers is plain arithmetic" do
+      assert parse("19 for breakfast + 22 for the uber") ==
                {:ok, {:binary, :add, {:number, 19}, {:number, 22}}}
     end
 

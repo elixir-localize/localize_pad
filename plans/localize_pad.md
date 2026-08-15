@@ -632,9 +632,29 @@ names that collide with ordinary words.
 Still outstanding in M3: `Calendrical.Interval` for quarter and week spans (currently declined
 rather than guessed), and `Kday` weekday phrases (`next Thursday`).
 
-**M4 — Percentages and money.** The `Percentage` type against its truth table, `Rate`,
-`Money` values, currency conversion with `Money.ExchangeRates`, sales tax, the `Money.Financial`
-phrase forms. Deliverable: Soulver's percentage, currency, rates and finance pages pass as tests.
+**M4 — Percentages and money. ✅ Partly done.** The `Percentage` type against its truth table,
+`Rate`, `Money` values, currency conversion with `Money.ExchangeRates`, sales tax, the
+`Money.Financial` phrase forms. Deliverable: Soulver's percentage, currency, rates and finance
+pages pass as tests.
+
+Landed: the full percentage truth table — every row of it, including `30% + 0.4 = 70%` and
+`50% × 30 = 15` — plus the `of`/`off`/`on` phrases, money recognition, money arithmetic, and
+percentages applied to money and to quantities.
+
+The governing decision on money mirrors the one on dates and zones. `Money.parse("19")` returns
+nineteen US dollars, so using it would turn every number in every sheet into money; currency is
+therefore only recognised when it is *written*, as a symbol or a code. And codes must appear in
+capitals, because `ALL`, `TRY` and `CUP` are all ISO currencies as well as ordinary words —
+which is what keeps `2 cup to mL` a volume rather than Cuban pesos.
+
+`$` follows the reader: `Localize.Currency.currency_from_locale/1` gives USD for `en`, AUD for
+`en-AU`, EUR for `de`. That is Soulver's region-settings behaviour, free from CLDR and working
+for every locale rather than a handful.
+
+Still outstanding in M4: the `Rate` type (`$99/week`), sales tax, and the `Money.Financial`
+phrase forms (compound interest, mortgage repayments). Currency *conversion* is wired but
+inert until an `OPEN_EXCHANGE_RATES_APP_ID` is configured; it reports the missing rate rather
+than inventing a number.
 
 **M5 — The temporal differentiator.** The `TemporalSet` value and the set-answer UI from §5.5
 (collapsed summary + expansion). Then, in rough order of ratio of appeal to effort: timezone

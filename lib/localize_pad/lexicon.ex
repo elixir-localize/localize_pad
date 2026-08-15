@@ -32,7 +32,7 @@ defmodule LocalizePad.Lexicon do
 
   """
 
-  @type role :: :to | :per | :after | :before
+  @type role :: :to | :per | :after | :before | :of | :off | :on
 
   @type deictic :: :now | :today | :tomorrow | :yesterday
 
@@ -50,7 +50,14 @@ defmodule LocalizePad.Lexicon do
       # evaluator swaps the operands rather than the parser, so the two
       # phrasings share one code path.
       after: ["after", "from"],
-      before: ["before", "ago", "until", "till"]
+      before: ["before", "ago", "until", "till"],
+
+      # Percentage phrasing. "who can remember if it's times or divide" is
+      # exactly the problem these solve, so they are core vocabulary rather
+      # than a convenience.
+      of: ["of"],
+      off: ["off"],
+      on: ["on"]
     }
   }
 

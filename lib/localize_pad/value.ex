@@ -80,6 +80,14 @@ defmodule LocalizePad.Value do
     )
   end
 
+  def format(%Money{} = money, options) do
+    Money.to_string(money, locale: locale_of(options))
+  end
+
+  def format(%LocalizePad.Percentage{} = percentage, options) do
+    LocalizePad.Percentage.format(percentage, options)
+  end
+
   def format(%Localize.Duration{} = duration, options) do
     Localize.Duration.to_string(duration, locale: locale_of(options))
   end
@@ -103,7 +111,7 @@ defmodule LocalizePad.Value do
   ### Returns
 
   * An atom naming the kind: `:number`, `:quantity`, `:temporal`, `:duration`,
-    `:zoned_time` or `:unknown`.
+    `:zoned_time`, `:percentage` or `:unknown`.
 
   ### Examples
 
@@ -115,12 +123,22 @@ defmodule LocalizePad.Value do
       :quantity
 
   """
-  @spec kind(term()) :: :number | :quantity | :temporal | :duration | :zoned_time | :unknown
+  @spec kind(term()) ::
+          :number
+          | :quantity
+          | :temporal
+          | :duration
+          | :zoned_time
+          | :percentage
+          | :money
+          | :unknown
   def kind(%Unit{}), do: :quantity
   def kind(%Tempo{}), do: :temporal
   def kind(%Tempo.Duration{}), do: :duration
   def kind(%Localize.Duration{}), do: :duration
   def kind(%DateTime{}), do: :zoned_time
+  def kind(%LocalizePad.Percentage{}), do: :percentage
+  def kind(%Money{}), do: :money
   def kind(value) when is_number(value), do: :number
   def kind(_other), do: :unknown
 
