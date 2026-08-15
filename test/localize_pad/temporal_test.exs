@@ -382,6 +382,34 @@ defmodule LocalizePad.TemporalTest do
     end
   end
 
+  describe "dates that are not precise" do
+    doctest LocalizePad.Temporal.Uncertain
+
+    # Historians and archivists write dates like this constantly, and every
+    # calculator makes them convert to something precise first — which is
+    # exactly the information they are trying not to assert.
+    test "a decade is a masked year" do
+      assert answer("the 1560s") == "A masked year spanning the 1560s."
+      assert answer("the 1990s") == "A masked year spanning the 1990s."
+    end
+
+    test "an approximation keeps its qualification" do
+      assert answer("circa 2022") == "The year 2022. Approximate."
+      assert answer("circa 600 BCE") == "The year -600. Approximate."
+    end
+
+    test "a plain year is still a number" do
+      assert answer("1984") == "1,984"
+      assert answer("2026 + 1") == "2,027"
+    end
+
+    test "a trailing s that means seconds still means seconds" do
+      # `s` is the CLDR abbreviation for `second`, so the decade matcher has to
+      # accept it as either — without swallowing real unit expressions.
+      assert answer("3 s to ms") == "3,000 milliseconds"
+    end
+  end
+
   describe "the running total" do
     # Adding up the dates in a sheet is meaningless. Before this was guarded,
     # the first date seeded the accumulator and the total read as a date while

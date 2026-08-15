@@ -394,7 +394,9 @@ defmodule LocalizePad.Temporal do
         Localize.DateTime.to_string(naive, locale: locale)
 
       _other ->
-        {:ok, to_string(tempo)}
+        # A masked or qualified value — `156X`, `-0600~` — has no single date
+        # to show. Saying what it *is* beats printing its ISO form at someone.
+        LocalizePad.Temporal.Uncertain.explain(tempo)
     end
   end
 

@@ -765,8 +765,21 @@ something to work around. And `Calendrical` **raises** rather than returning an 
 outside the installed JPL ephemeris, which on a render path is a crash; the conversion is
 wrapped, and there is a test pinning it.
 
-Still outstanding in M5: `.ics` import and public holidays, `Tempo.explain/1` in the answer
-panel, dependency scheduling, and uncertainty (`circa 600 BCE`, `the 1560s`).
+Uncertainty came next, and it brought `Tempo.explain/1` with it. `the 1560s` compiles to the
+masked year `156X`, `circa 600 BCE` to `-0600~`, and Tempo does the rest. Because a masked year
+has no single date to display, these render *as a description* — "A masked year spanning the
+1560s." — which is more useful than any date could be, and is the "why did I get this answer"
+affordance §9 asked for, arriving as a side effect rather than as a feature.
+
+The qualification is read from the struct rather than from Tempo's prose, which is written for a
+terminal and should not be parsed.
+
+One collision worth recording: `s` is the CLDR abbreviation for `second`, so `the 1560s` arrived
+as the number 1560 beside a *unit* and rendered as "1,560 seconds". The decade matcher accepts
+either classification, and there is a test that `3 s to ms` is still 3,000 milliseconds.
+
+Still outstanding in M5: `.ics` import and public holidays (one job — holidays arrive as an
+`.ics` feed), and dependency scheduling with critical path.
 
 **M6 — The localization thesis.** Localized operator lexicon for `de`, `fr`, `es`, `ja`. Locale
 switch re-parses the document. Dates arrive already localized from M3, so this is purely about
