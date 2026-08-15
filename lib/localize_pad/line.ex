@@ -181,7 +181,7 @@ defmodule LocalizePad.Line do
     answers = Map.fetch!(context, :answers)
 
     with {:ok, tokens} <- Tokenizer.tokenize(expression, locale: locale),
-         {:ok, ast} <- Parser.parse(tokens, variables: Map.keys(variables)),
+         {:ok, ast} <- Parser.parse(tokens, variables: Map.keys(variables), locale: locale),
          {:ok, resolved} <- resolve_line_references(ast, answers),
          {:ok, value} <- Evaluator.eval(resolved, variables) do
       %{line | value: value, formatted: format(value, locale), error: nil}

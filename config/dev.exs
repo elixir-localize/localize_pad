@@ -10,6 +10,12 @@ config :localize_pad, LocalizePad.Repo,
   show_sensitive_data_on_connection_error: true,
   pool_size: 10
 
+# A development placeholder so tax phrases do something visible. There is no
+# correct default for the application itself — rates vary by country and, in
+# the US, by state — so this deliberately lives in dev config rather than in
+# `config.exs`.
+config :localize_pad, sales_tax: [name: "VAT", rate: 15]
+
 # For development, we disable any cache and enable
 # debugging and code reloading.
 #

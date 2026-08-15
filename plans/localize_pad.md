@@ -690,12 +690,35 @@ Every figure agrees with Soulver to the cent, loan repayments included.
 Currency *conversion* remains wired but inert until an `OPEN_EXCHANGE_RATES_APP_ID` is
 configured; it reports the missing rate rather than inventing a number.
 
-**M5 — The temporal differentiator.** The `TemporalSet` value and the set-answer UI from §5.5
+**M5 — The temporal differentiator. 🔨 In progress.** The `TemporalSet` value and the
+set-answer UI from §5.5
 (collapsed summary + expansion). Then, in rough order of ratio of appeal to effort: timezone
 overlap and "when are we all awake"; `.ics` paste-and-ask-when-I'm-free; recurrence
 (`every Friday the 13th`, `4th Thursday of November`); territory-aware workdays and holidays;
 `Tempo.explain/1` wired to the answer panel; dependency scheduling with critical path;
 uncertainty and cross-calendar. Deliverable: the questions in §4b, answered, in a notepad.
+
+Recurrence landed first — the clearest case of a question people ask that no notepad calculator
+has ever answered. `every Friday the 13th`, `4th Thursday of November`, `2nd Tuesday of every
+month`, `last weekday of every month`. Nothing about recurrence is implemented: phrases compile
+to RFC 5545 rule strings and Tempo does the work, so the module is mostly tables.
+
+Weekday and month names come from CLDR through `Localize.Calendar`, which means the recurrence
+vocabulary is already localized — `jeden Freitag` will need only the operator words in M6, not a
+second list of weekday names.
+
+One nice piece of disambiguation fell out: **where the ordinal sits decides what it means**.
+`4th Thursday` puts it before the weekday and means the fourth one; `Friday the 13th` puts it
+after and means the 13th day of the month. Position, not vocabulary — the same principle that
+settles `in` as keyword-or-inches.
+
+Set answers now render as a collapsed summary with the count *first* (`5 dates · Nov 13, 2026,
+…`), because the margin truncates from the right and "how many" is the part worth keeping. The
+expansion panel from §5.5 is still to come.
+
+Still outstanding in M5: timezone overlap ("when are we all awake"), `.ics` import, territory-
+aware workdays and holidays, `Tempo.explain/1` in the answer panel, dependency scheduling, and
+uncertainty/cross-calendar.
 
 **M6 — The localization thesis.** Localized operator lexicon for `de`, `fr`, `es`, `ja`. Locale
 switch re-parses the document. Dates arrive already localized from M3, so this is purely about

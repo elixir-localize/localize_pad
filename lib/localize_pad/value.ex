@@ -22,6 +22,10 @@ defmodule LocalizePad.Value do
   # is enough for every unit conversion in practice.
   @default_maximum_fractional_digits 6
 
+  # How many occurrences of a recurring answer fit in a margin before the list
+  # stops being readable.
+  @summary_limit 4
+
   @doc """
   Formats a value as a localized string.
 
@@ -80,6 +84,24 @@ defmodule LocalizePad.Value do
     )
   end
 
+  # A recurrence has no single answer, so the margin gets a summary and the
+  # dates themselves. Both are shown because "2 dates" alone answers nothing,
+  # and a bare list stops being readable past a handful — this is the
+  # collapsed-summary half of the set-answer design, with the expansion panel
+  # still to come.
+  def format(%Tempo.IntervalSet{} = set, options) do
+    locale = locale_of(options)
+    dates = set |> Tempo.IntervalSet.to_list() |> Enum.map(&Tempo.Interval.from/1)
+
+    formatted =
+      dates
+      |> Enum.take(@summary_limit)
+      |> Enum.map(&format_occurrence(&1, locale))
+      |> Enum.reject(&is_nil/1)
+
+    {:ok, summarise(formatted, length(dates), locale)}
+  end
+
   def format(%LocalizePad.Rate{} = rate, options) do
     LocalizePad.Rate.format(rate, options)
   end
@@ -136,6 +158,7 @@ defmodule LocalizePad.Value do
           | :percentage
           | :money
           | :rate
+          | :temporal_set
           | :unknown
   def kind(%Unit{}), do: :quantity
   def kind(%Tempo{}), do: :temporal
@@ -145,12 +168,38 @@ defmodule LocalizePad.Value do
   def kind(%LocalizePad.Percentage{}), do: :percentage
   def kind(%Money{}), do: :money
   def kind(%LocalizePad.Rate{}), do: :rate
+  def kind(%Tempo.IntervalSet{}), do: :temporal_set
   def kind(value) when is_number(value), do: :number
   def kind(_other), do: :unknown
 
   # Localize spells the option `:max_fractional_digits`; this module's own
   # option follows the house convention of complete words, so translate at the
   # boundary rather than leaking the abbreviation into the public API.
+  defp format_occurrence(tempo, locale) do
+    with {:ok, date} <- Tempo.to_date(tempo),
+         {:ok, formatted} <- Localize.Date.to_string(date, locale: locale, format: :medium) do
+      formatted
+    else
+      _other -> nil
+    end
+  end
+
+  defp summarise([], _count, _locale), do: ""
+
+  # The count goes first when the list is cut short. A margin truncates from
+  # the right, so "5 dates · Nov 13 …" still says how many there are while
+  # "Nov 13, Aug 13, Oct 13 …" loses the only part that was not visible anyway.
+  defp summarise(formatted, count, locale) do
+    listed = Enum.join(formatted, ", ")
+
+    if count > length(formatted) do
+      {:ok, total} = Localize.Number.to_string(count, locale: locale)
+      "#{total} dates · #{listed} …"
+    else
+      listed
+    end
+  end
+
   defp locale_of(options) do
     Keyword.get_lazy(options, :locale, &Localize.get_locale/0)
   end

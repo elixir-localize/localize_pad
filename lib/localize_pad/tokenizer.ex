@@ -110,6 +110,7 @@ defmodule LocalizePad.Tokenizer do
         {:text, text} -> tokenize_text(text, locale)
       end)
       |> join_line_references()
+      |> join_ordinals()
       |> join_percentages()
       |> join_money(locale)
       |> mark_currencies(locale)
@@ -152,6 +153,28 @@ defmodule LocalizePad.Tokenizer do
 
   defp join_line_references([token | rest]), do: [token | join_line_references(rest)]
   defp join_line_references([]), do: []
+
+  # `4th` reaches here as the number 4 and a stray `th`, because the number
+  # scanner takes the digits and leaves the suffix behind. Ordinals matter for
+  # recurrence phrases — `4th Thursday of November` — so put them back
+  # together.
+  @ordinal_suffixes ~w(st nd rd th)
+
+  defp join_ordinals([]), do: []
+
+  defp join_ordinals([
+         %Token{kind: :number, value: value} = number,
+         %Token{kind: :word, source: suffix} = word | rest
+       ])
+       when is_integer(value) do
+    if String.downcase(suffix) in @ordinal_suffixes do
+      [Token.new(:ordinal, value, "#{value}#{suffix}") | join_ordinals(rest)]
+    else
+      [number | join_ordinals([word | rest])]
+    end
+  end
+
+  defp join_ordinals([token | rest]), do: [token | join_ordinals(rest)]
 
   # `20%` and `20 percent` are one value, not a number beside a symbol.
   defp join_percentages([]), do: []

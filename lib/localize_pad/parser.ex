@@ -51,6 +51,7 @@ defmodule LocalizePad.Parser do
   """
 
   alias LocalizePad.{Finance, Token}
+  alias LocalizePad.Temporal.Recurrence
 
   # {left, right} binding powers. Right < left makes an operator
   # right-associative, which is why `:pow` is {11, 10}.
@@ -104,6 +105,7 @@ defmodule LocalizePad.Parser do
           | {:convert, ast(), ast()}
           | {:phrase, :of | :off | :on, ast(), ast()}
           | {:finance, atom(), map()}
+          | {:recurrence, String.t(), Date.t()}
 
   @doc """
   Parses a token stream into an AST.
@@ -153,8 +155,14 @@ defmodule LocalizePad.Parser do
     # they are recognised whole rather than assembled from infix operators.
     # See `LocalizePad.Finance`.
     case Finance.match(tokens) do
-      {:ok, node} -> {:ok, node}
-      :error -> parse_expression_tokens(tokens, variables)
+      {:ok, node} ->
+        {:ok, node}
+
+      :error ->
+        case Recurrence.match(tokens, Keyword.take(options, [:locale, :reference_date])) do
+          {:ok, node} -> {:ok, node}
+          :error -> parse_expression_tokens(tokens, variables)
+        end
     end
   end
 
@@ -186,7 +194,8 @@ defmodule LocalizePad.Parser do
   # unit `inch`, not the conversion keyword — position is what disambiguates.
   defp parse_prefix([], _variables), do: {:error, :no_expression}
 
-  defp parse_prefix([%Token{kind: :number, value: value} | rest], _variables) do
+  defp parse_prefix([%Token{kind: kind, value: value} | rest], _variables)
+       when kind in [:number, :ordinal] do
     {:ok, {:number, value}, rest}
   end
 
