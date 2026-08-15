@@ -24,6 +24,18 @@ defmodule LocalizePadWeb.SheetLive do
   phrase. That is the product, so it lives in the header rather than in a
   settings page.
 
+  ## Where a sheet lives
+
+  In the browser. The sheet is held in `localStorage` and restored on mount,
+  which means a reload does not lose your work and no account is needed to
+  start. It also means a sheet is not shared between devices, and that is the
+  honest trade for now — the alternative is an account before the first
+  calculation.
+
+  The session cookie would have been the smaller change and the wrong one: it
+  is capped at about 4 KB, which a working sheet exceeds sooner than anyone
+  expects, and it would fail by silently truncating.
+
   ## Answers that do not fit
 
   Some answers are sets. `every Friday the 13th` is five dates, and a margin
@@ -75,6 +87,17 @@ defmodule LocalizePadWeb.SheetLive do
   @impl Phoenix.LiveView
   def handle_event("edit", %{"source" => source}, socket) do
     {:noreply, socket |> assign(:source, source) |> recalculate()}
+  end
+
+  # Sent by the storage hook on mount when the browser has a sheet saved.
+  def handle_event("restore", %{"source" => source}, socket) when is_binary(source) do
+    {:noreply, socket |> assign(:source, source) |> assign(:selected, nil) |> recalculate()}
+  end
+
+  def handle_event("download", _params, socket) do
+    markdown = Sheet.to_markdown(socket.assigns.sheet)
+
+    {:noreply, push_event(socket, "download", %{filename: "localize-pad.md", content: markdown})}
   end
 
   def handle_event("select", %{"line" => line}, socket) do
@@ -168,27 +191,38 @@ defmodule LocalizePadWeb.SheetLive do
       <header class="mb-4 flex items-baseline justify-between gap-4">
         <h1 class="text-lg font-semibold tracking-tight">LocalizePad</h1>
 
-        <form phx-change="set_locale">
-          <label class="flex items-center gap-2 text-sm">
-            <span class="opacity-60">Locale</span>
-            <select
-              name="locale"
-              class="select select-sm select-bordered"
-              aria-label="Sheet locale"
-            >
-              <option
-                :for={{name, code} <- @locale_options}
-                value={code}
-                selected={code == to_string(@locale)}
+        <div class="flex items-center gap-3">
+          <button
+            type="button"
+            phx-click="download"
+            class="btn btn-sm btn-ghost"
+            title="Download this sheet as Markdown"
+          >
+            Download
+          </button>
+
+          <form phx-change="set_locale">
+            <label class="flex items-center gap-2 text-sm">
+              <span class="opacity-60">Locale</span>
+              <select
+                name="locale"
+                class="select select-sm select-bordered"
+                aria-label="Sheet locale"
               >
-                {name}
-              </option>
-            </select>
-          </label>
-        </form>
+                <option
+                  :for={{name, code} <- @locale_options}
+                  value={code}
+                  selected={code == to_string(@locale)}
+                >
+                  {name}
+                </option>
+              </select>
+            </label>
+          </form>
+        </div>
       </header>
 
-      <form phx-change="edit" class="min-h-0 flex-1">
+      <form id="sheet" phx-hook=".SheetStorage" phx-change="edit" class="min-h-0 flex-1">
         <div class="flex h-full overflow-hidden rounded-lg border border-base-300">
           <textarea
             name="source"
@@ -241,6 +275,42 @@ defmodule LocalizePadWeb.SheetLive do
         </span>
       </footer>
     </div>
+
+    <script :type={Phoenix.LiveView.ColocatedHook} name=".SheetStorage">
+      const KEY = "localize_pad.sheet"
+
+      export default {
+        mounted() {
+          const textarea = this.el.querySelector("textarea[name=source]")
+          const saved = window.localStorage.getItem(KEY)
+
+          // Only replace the server's sample when there is something to
+          // replace it with. A first visit should see a sheet, not a blank.
+          if (saved !== null && saved !== textarea.value) {
+            textarea.value = saved
+            this.pushEvent("restore", {source: saved})
+          }
+
+          // Save on input rather than on the debounced change, so a reload
+          // immediately after typing does not lose the last keystrokes.
+          this.el.addEventListener("input", () => {
+            window.localStorage.setItem(KEY, textarea.value)
+          })
+
+          this.handleEvent("download", ({filename, content}) => {
+            const url = URL.createObjectURL(new Blob([content], {type: "text/markdown"}))
+            const link = document.createElement("a")
+
+            link.href = url
+            link.download = filename
+            document.body.appendChild(link)
+            link.click()
+            link.remove()
+            URL.revokeObjectURL(url)
+          })
+        }
+      }
+    </script>
     """
   end
 end

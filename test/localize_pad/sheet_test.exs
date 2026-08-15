@@ -192,6 +192,58 @@ defmodule LocalizePad.SheetTest do
     end
   end
 
+  describe "Markdown export" do
+    test "answers are written as the sheet's own comment syntax" do
+      markdown = "19 + 22" |> Sheet.new(locale: :en) |> Sheet.to_markdown()
+
+      assert markdown =~ "19 + 22   // 41"
+    end
+
+    test "the export round-trips" do
+      # A download is a save, and a save that cannot be reopened is a
+      # screenshot. `//` is the sheet's own marker for text the engine ignores,
+      # so the exported block pastes straight back in.
+      original = "# Trip\n\n19 + 22\nhotel = 120\nhotel * 3"
+      markdown = original |> Sheet.new(locale: :en) |> Sheet.to_markdown()
+
+      block = markdown |> String.split("```") |> Enum.at(1) |> String.trim()
+      reimported = Sheet.new(block, locale: :en)
+
+      assert Enum.map(reimported.lines, & &1.formatted) ==
+               original
+               |> Sheet.new(locale: :en)
+               |> Map.fetch!(:lines)
+               |> Enum.map(& &1.formatted)
+    end
+
+    test "the locale is recorded, because it decides what the numbers mean" do
+      assert "1.234,5" |> Sheet.new(locale: :de) |> Sheet.to_markdown() =~ "Locale: `de`"
+      assert "1,234.5" |> Sheet.new(locale: :en) |> Sheet.to_markdown() =~ "Locale: `en`"
+    end
+
+    test "a set is exported whole, not as the margin's summary" do
+      markdown = "every Friday the 13th" |> Sheet.new(locale: :en) |> Sheet.to_markdown()
+
+      # The margin truncates because it has one line. A file does not.
+      refute markdown =~ "…"
+      refute markdown =~ "5 dates"
+      assert markdown =~ "Jul 13, 2029"
+    end
+
+    test "lines with no answer keep their text and gain no comment" do
+      markdown = "# Trip\n\njust a note" |> Sheet.new(locale: :en) |> Sheet.to_markdown()
+
+      assert markdown =~ "# Trip"
+      assert markdown =~ "just a note"
+      refute markdown =~ "just a note   //"
+    end
+
+    test "the total is included when there is one" do
+      assert "19\n22" |> Sheet.new(locale: :en) |> Sheet.to_markdown() =~ "**Total:** 41"
+      refute "# only a heading" |> Sheet.new(locale: :en) |> Sheet.to_markdown() =~ "Total"
+    end
+  end
+
   describe "the same sheet read in two locales" do
     # The point of the whole project: the locale decides how the text is
     # *read*, not merely how the answer is written. These two runs are the same

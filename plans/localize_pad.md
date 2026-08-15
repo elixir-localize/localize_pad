@@ -899,8 +899,25 @@ M5 and M6 are the two thesis milestones; **their order is decision 3 below.** M5
 demonstrable and easier to write about; M6 compounds — every locale added multiplies the
 addressable audience for everything built before it.
 
-**M7 — Product.** Accounts, sheet persistence, sheetbooks, export, sharing, keyboard shortcuts,
-CodeMirror editor, the timeline pane from §5.5. Deliverable: something deployable.
+**M7 — Product. 🔨 Persistence and export done.** Accounts, sheet persistence, sheetbooks,
+export, sharing, keyboard shortcuts, CodeMirror editor, the timeline pane from §5.5.
+Deliverable: something deployable.
+
+**Session-only persistence, in `localStorage`.** A reload no longer loses the sheet, and no
+account is needed to start. The trade is that a sheet does not follow you between devices, which
+is the honest cost of not asking for an account before the first calculation. The session cookie
+would have been the smaller change and the wrong one: it caps at about 4 KB, which a working
+sheet exceeds sooner than anyone expects, and it fails by silently truncating.
+
+**Markdown download**, and the format turned out better than a table. Answers are written as
+`//` comments — the sheet's *own* syntax for text the engine ignores — so the exported block
+pastes straight back in and evaluates to exactly what it says. A download is a save, and a save
+that cannot be reopened is a screenshot. There is a test that round-trips it.
+
+Two details matter. The locale is recorded in the header, because `1.234,5` is a different number
+in `de` than in `en` and a sheet without its locale is ambiguous rather than portable. And sets
+are exported *whole* rather than as the margin's truncated summary — the margin has one line, a
+file does not.
 
 A conformance suite modelled on Unity's `guides/conformance.md` — every documented Soulver
 example as an executable test, marked pass/fail/won't-do — is the honest way to track progress
@@ -973,7 +990,8 @@ and worth building during M1.
    line-for-line column alignment the whole editor depends on.
 5. **Relative-date vocabulary placement** — `yesterday` / `next Thursday` in Calendrical
    (CLDR has `dateFields` backing) or in LocalizePad's lexicon?
-6. **Persistence and accounts in v1**, or session-only until the language is good?
+6. ~~**Persistence and accounts in v1**~~ — **resolved: session-only.** `localStorage`, plus a
+   Markdown download that round-trips. Accounts and server-side sheets remain open.
 
 **Resolved:** Tempo is in, and not as a fallback for what Calendrical cannot do — it is the
 temporal value type and the second pillar of the product (§4b, §5.5).

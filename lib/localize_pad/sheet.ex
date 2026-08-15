@@ -248,6 +248,112 @@ defmodule LocalizePad.Sheet do
   end
 
   @doc """
+  Renders the sheet as Markdown, with its answers.
+
+  ## Round-tripping, for free
+
+  The answers are written as `//` comments, which is the sheet's *own* syntax
+  for text the engine ignores. So the exported block can be pasted straight
+  back into a sheet and evaluates to exactly what it says — the answers are
+  both readable and inert.
+
+  That is worth more than a prettier table. A download is a save, and a save
+  that cannot be reopened is a screenshot.
+
+  ## The locale is part of the document
+
+  `1.234,5` is a different number in `de` than in `en`, so a sheet without its
+  locale is ambiguous rather than portable. It is recorded in the header.
+
+  ### Arguments
+
+  * `sheet` - an evaluated sheet.
+
+  * `options` - a keyword list of options.
+
+  ### Options
+
+  * `:title` - the heading to put at the top. Defaults to `"LocalizePad sheet"`.
+
+  ### Returns
+
+  * A Markdown string.
+
+  ### Examples
+
+      iex> markdown =
+      ...>   "19 + 22" |> LocalizePad.Sheet.new(locale: :en) |> LocalizePad.Sheet.to_markdown()
+      iex> markdown =~ "19 + 22   // 41"
+      true
+
+      iex> markdown =
+      ...>   "19 + 22" |> LocalizePad.Sheet.new(locale: :de) |> LocalizePad.Sheet.to_markdown()
+      iex> markdown =~ "Locale: `de`"
+      true
+
+  """
+  @spec to_markdown(t(), keyword()) :: String.t()
+  def to_markdown(%__MODULE__{} = sheet, options \\ []) do
+    title = Keyword.get(options, :title, "LocalizePad sheet")
+    width = column_width(sheet)
+
+    body = Enum.map_join(sheet.lines, "\n", &markdown_line(&1, width))
+
+    [
+      "# #{title}",
+      "",
+      "Locale: `#{sheet.locale}`",
+      "",
+      "```",
+      String.trim_trailing(body),
+      "```",
+      total_line(sheet)
+    ]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join("\n")
+    |> Kernel.<>("\n")
+  end
+
+  # Answers line up in a column, as they do on screen. The width is the longest
+  # source line, so nothing is truncated and the block stays scannable.
+  defp column_width(%__MODULE__{lines: lines}) do
+    lines
+    |> Enum.filter(& &1.formatted)
+    |> Enum.map(&String.length(String.trim_trailing(&1.source)))
+    |> Enum.max(fn -> 0 end)
+  end
+
+  defp markdown_line(%Line{formatted: nil} = line, _width), do: String.trim_trailing(line.source)
+
+  defp markdown_line(%Line{} = line, width) do
+    source = String.trim_trailing(line.source)
+
+    String.pad_trailing(source, width) <> "   // " <> exported_answer(line)
+  end
+
+  # The margin truncates a set of dates because it has one line; a file does
+  # not, and an export that drops half its answer is not a save.
+  defp exported_answer(%Line{value: value, formatted: formatted}) do
+    case Value.detail(value, locale: Localize.get_locale()) do
+      {:ok, parts} -> Enum.join(parts, ", ")
+      {:error, _reason} -> formatted
+    end
+  end
+
+  defp total_line(%__MODULE__{} = sheet) do
+    case total(sheet) do
+      nil ->
+        nil
+
+      total ->
+        case Value.format(total, locale: sheet.locale) do
+          {:ok, formatted} -> "\n**Total:** #{formatted}"
+          {:error, _reason} -> nil
+        end
+    end
+  end
+
+  @doc """
   Renders the sheet as source text.
 
   ### Arguments
