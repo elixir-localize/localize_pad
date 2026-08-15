@@ -127,6 +127,48 @@ defmodule LocalizePad.MoneyTest do
     end
   end
 
+  describe "rates" do
+    test "money over a unit is a rate" do
+      assert answer("$99 per week") == "$99.00/week"
+      assert answer("$99 / week") == "$99.00/week"
+      assert answer("$24 a day") == "$24.00/day"
+    end
+
+    test "a quantity over a unit needs no rate type at all" do
+      # `Localize.Unit` already models this as a compound unit.
+      assert answer("90 km / 3 day") == "30 kilometers per day"
+    end
+
+    test "a rate multiplied by a quantity gives an amount" do
+      assert answer("$50/week * 12 weeks") == "$600.00"
+    end
+
+    test "converting the denominator uses the Gregorian mean month" do
+      # Localize declines `day -> month` because a month has no fixed length,
+      # and it is right to. A notepad still has to answer the question, so
+      # `LocalizePad.Rate` supplies the convention: 365.2425 days a year,
+      # one twelfth of that a month.
+      assert answer("$30/day in month") == "$913.11/month"
+      assert answer("€30/day in €/month") == "€913.11/month"
+    end
+
+    test "the convention agrees with the conversions Localize does allow" do
+      # 7 days to the week is exact either way, so using the table uniformly
+      # introduces no disagreement.
+      assert answer("$10/day in week") == "$70.00/week"
+      assert answer("$24/day in hour") == "$1.00/hour"
+    end
+
+    test "rates add, in the left operand's denominator" do
+      assert answer("$20/day + $300/week") == "$62.86/day"
+    end
+
+    test "the denominator is named in the singular, in the sheet's locale" do
+      assert answer("$99 per week", locale: :en) == "$99.00/week"
+      assert answer("99 EUR per week", locale: :de) == "99,00\u00A0€/Woche"
+    end
+  end
+
   describe "totals" do
     test "money sums with money" do
       sheet = Sheet.new("$19\n$22", locale: :en)

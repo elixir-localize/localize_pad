@@ -651,10 +651,23 @@ which is what keeps `2 cup to mL` a volume rather than Cuban pesos.
 `en-AU`, EUR for `de`. That is Soulver's region-settings behaviour, free from CLDR and working
 for every locale rather than a handful.
 
-Still outstanding in M4: the `Rate` type (`$99/week`), sales tax, and the `Money.Financial`
-phrase forms (compound interest, mortgage repayments). Currency *conversion* is wired but
-inert until an `OPEN_EXCHANGE_RATES_APP_ID` is configured; it reports the missing rate rather
-than inventing a number.
+Rates landed too, and they turned out to need far less than expected: `Localize.Unit` already
+models a quantity over a unit, so `90 km / 3 day` is a `kilometer-per-day` with no help from us,
+and only *money* over a unit needed a type — money not being a unit.
+
+That work did surface one place where the right answer is a convention rather than a fact.
+`Localize.Unit.convert/2` refuses `month → day` and `year → day`, correctly: a month has no
+fixed length. But `$30/day in €/month` is a reasonable question that a notepad has to answer, or
+rates are useless for pay, rent and subscriptions — the domain people actually use them for. So
+`LocalizePad.Rate` states the Gregorian mean (365.2425 days a year, one twelfth of that a
+month) *in the application*, where the assumption belongs, rather than pushing it into Localize
+where it would become a claim CLDR does not make. The table agrees exactly with the conversions
+Localize does allow, so using it uniformly introduces no disagreement.
+
+Still outstanding in M4: sales tax, and the `Money.Financial` phrase forms (compound interest,
+mortgage repayments). Currency *conversion* is wired but inert until an
+`OPEN_EXCHANGE_RATES_APP_ID` is configured; it reports the missing rate rather than inventing
+a number.
 
 **M5 — The temporal differentiator.** The `TemporalSet` value and the set-answer UI from §5.5
 (collapsed summary + expansion). Then, in rough order of ratio of appeal to effort: timezone

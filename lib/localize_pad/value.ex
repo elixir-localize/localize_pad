@@ -80,6 +80,10 @@ defmodule LocalizePad.Value do
     )
   end
 
+  def format(%LocalizePad.Rate{} = rate, options) do
+    LocalizePad.Rate.format(rate, options)
+  end
+
   def format(%Money{} = money, options) do
     Money.to_string(money, locale: locale_of(options))
   end
@@ -131,6 +135,7 @@ defmodule LocalizePad.Value do
           | :zoned_time
           | :percentage
           | :money
+          | :rate
           | :unknown
   def kind(%Unit{}), do: :quantity
   def kind(%Tempo{}), do: :temporal
@@ -139,6 +144,7 @@ defmodule LocalizePad.Value do
   def kind(%DateTime{}), do: :zoned_time
   def kind(%LocalizePad.Percentage{}), do: :percentage
   def kind(%Money{}), do: :money
+  def kind(%LocalizePad.Rate{}), do: :rate
   def kind(value) when is_number(value), do: :number
   def kind(_other), do: :unknown
 

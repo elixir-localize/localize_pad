@@ -29,7 +29,7 @@ defmodule LocalizePad.Evaluator do
 
   alias Localize.Unit
   alias Localize.Unit.Math
-  alias LocalizePad.{Parser, Percentage, Temporal}
+  alias LocalizePad.{Parser, Percentage, Rate, Temporal}
   alias LocalizePad.Temporal.Zones
 
   # `Decimal` is in the lattice even though nothing in M1 produces one: the
@@ -49,9 +49,11 @@ defmodule LocalizePad.Evaluator do
           | Zones.t()
           | Percentage.t()
           | Money.t()
-          # A conversion target rather than a quantity: the `EUR` in
-          # `10 USD in EUR`.
+          # Conversion targets rather than quantities: the `EUR` in
+          # `10 USD in EUR`, and the `€/month` in `€30/day in €/month`.
           | {:currency, atom()}
+          | {:rate_target, atom(), Unit.t()}
+          | Rate.t()
   @type environment :: %{optional(String.t()) => value()}
 
   @doc """
@@ -278,6 +280,32 @@ defmodule LocalizePad.Evaluator do
     Money.mult(right, Percentage.to_decimal(left))
   end
 
+  # ── Rates ───────────────────────────────────────────────────────────────
+
+  # `$99 per week`. Only money needs a rate type; a quantity over a unit is
+  # already a compound unit and the unit engine handles it.
+  defp apply_operator(:div, %Money{} = left, %Unit{} = right) do
+    Rate.new(left, right)
+  end
+
+  # `$50/week × 12 weeks` is the whole point of having rates.
+  defp apply_operator(:mul, %Rate{} = left, %Unit{} = right), do: Rate.multiply(left, right)
+  defp apply_operator(:mul, %Unit{} = left, %Rate{} = right), do: Rate.multiply(right, left)
+
+  defp apply_operator(:add, %Rate{} = left, %Rate{} = right), do: Rate.add(left, right)
+
+  defp apply_operator(:mul, %Rate{} = left, right) when is_number(right) do
+    with {:ok, amount} <- Money.mult(left.amount, right) do
+      {:ok, %{left | amount: amount}}
+    end
+  end
+
+  # A currency over a unit is not a value but the *shape* of one: the `€/month`
+  # in `€30/day in €/month`. It only ever appears as a conversion target.
+  defp apply_operator(:div, {:currency, code}, %Unit{} = right) do
+    {:ok, {:rate_target, code, right}}
+  end
+
   # ── Percentages ─────────────────────────────────────────────────────────
   #
   # The rules read oddly in isolation but are exactly what people mean. See
@@ -484,6 +512,13 @@ defmodule LocalizePad.Evaluator do
     end
   end
 
+  # `$30/day in month` and `€30/day in €/month` both ask for the same thing.
+  defp convert(%Rate{} = rate, %Unit{} = target), do: Rate.convert(rate, target)
+
+  defp convert(%Rate{} = rate, {:rate_target, _code, target}) do
+    Rate.convert(rate, target)
+  end
+
   # A bare time with no source zone cannot be converted — `6pm in Chicago`
   # leaves out where 6pm *is*, and guessing the sheet's own zone would be a
   # different answer for every reader.
@@ -506,6 +541,7 @@ defmodule LocalizePad.Evaluator do
   defp describe(%DateTime{}), do: :zoned_time
   defp describe(%Percentage{}), do: :percentage
   defp describe(%Money{currency: code}), do: code
+  defp describe(%Rate{}), do: :rate
   defp describe(value) when is_number(value), do: :number
   defp describe(other), do: other
 end
