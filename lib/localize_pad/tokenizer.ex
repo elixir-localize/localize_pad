@@ -37,7 +37,7 @@ defmodule LocalizePad.Tokenizer do
 
   """
 
-  alias LocalizePad.{Currency, Lexicon, SalesTax, Token}
+  alias LocalizePad.{Currency, Lexicon, SalesTax, Token, Units}
   alias LocalizePad.Temporal.{Calendars, Scanner, Zones}
 
   # Multi-character operators must be tried before their single-character
@@ -379,7 +379,7 @@ defmodule LocalizePad.Tokenizer do
 
   defp classify_ordinary_word(word, locale) do
     keyword = Lexicon.role(word, lexicon_locale(locale))
-    unit = resolve_unit(word)
+    unit = resolve_unit(word, locale)
 
     case {keyword, unit} do
       {{:ok, role}, {:ok, unit_name}} -> Token.new(:keyword, role, word, unit: unit_name)
@@ -414,16 +414,41 @@ defmodule LocalizePad.Tokenizer do
   #
   # The missing plurals are worth fixing upstream in Unity; this table is what
   # keeps calendar arithmetic working until they are.
-  defp resolve_unit(word) do
-    case Unity.Aliases.resolve(word) do
-      {:ok, unit} ->
-        {:ok, unit}
+  defp resolve_unit(word, locale) do
+    downcased = String.downcase(word)
 
-      {:error, _reason} = error ->
-        case Map.fetch(@calendar_plurals, String.downcase(word)) do
-          {:ok, singular} -> Unity.Aliases.resolve(singular)
-          :error -> error
-        end
+    with {:error, _reason} <- Unity.Aliases.resolve(word),
+         # Unity's table is case-sensitive, and German capitalises its nouns —
+         # "Kilometer" is the identifier `kilometer` but for one letter.
+         {:error, _reason} <- Unity.Aliases.resolve(downcased),
+         {:error, _reason} <- calendar_plural(downcased),
+         :error <- localized_unit(word, locale) do
+      {:error, :unknown_unit}
+    else
+      {:ok, unit} -> {:ok, unit}
+    end
+  end
+
+  # The CLDR display-name index is what gives a German sheet `Wochen`. It is
+  # *not* consulted for English, because Unity's alias table already is the
+  # English vocabulary and is deliberately narrower than CLDR: it omits
+  # `nights` so that `3 nights` stays prose, and re-adding it here would undo
+  # that on every English sheet.
+  defp localized_unit(word, locale) do
+    if language(locale) == "en", do: :error, else: Units.resolve(word, locale)
+  end
+
+  defp language(locale) do
+    case Localize.validate_locale(locale) do
+      {:ok, tag} -> to_string(tag.language)
+      _other -> "en"
+    end
+  end
+
+  defp calendar_plural(word) do
+    case Map.fetch(@calendar_plurals, word) do
+      {:ok, singular} -> Unity.Aliases.resolve(singular)
+      :error -> {:error, :unknown_unit}
     end
   end
 

@@ -27,8 +27,17 @@ defmodule LocalizePad.Lexicon do
 
   ## Scope
 
-  English only for now. The roles here are the ones M1 can act on; percentage,
-  date and finance roles arrive with the milestones that evaluate them.
+  English and German. German is the proof that the thesis holds: everything
+  *except* this table — month names, weekday names, unit names, currency
+  symbols, number separators, date field order — comes from CLDR, so adding a
+  locale is a page of operator words rather than a translation project.
+
+  It is also where the limit shows. `nach` is both "in" (conversion) and
+  "after" (relative date), and one word cannot carry both roles here; German
+  keeps `nach` for "after" and uses `in` for conversion. Word *order* is the
+  larger version of the same problem — `20 is 10% of what` has no word-for-word
+  German form — and phrase rules per locale, rather than vocabulary per locale,
+  are what that will eventually need.
 
   """
 
@@ -62,6 +71,19 @@ defmodule LocalizePad.Lexicon do
       # Set intersection over spans of time. "when are London and New York
       # both at work" is the question; `and` is how people write it.
       intersect: ["and", "∩", "overlap", "overlapping"]
+    },
+    de: %{
+      # `1.234,5 Meter in Kilometer`. `nach` is deliberately absent: it is the
+      # relative-date "after", and one word cannot be both.
+      to: ["in", "zu", "als", "bis"],
+      per: ["pro", "je"],
+      after: ["nach"],
+      before: ["vor"],
+      # `20 % von 700`.
+      of: ["von"],
+      off: ["weniger"],
+      on: ["plus"],
+      intersect: ["und", "∩"]
     }
   }
 
@@ -78,6 +100,12 @@ defmodule LocalizePad.Lexicon do
       today: ["today"],
       tomorrow: ["tomorrow"],
       yesterday: ["yesterday"]
+    },
+    de: %{
+      now: ["jetzt"],
+      today: ["heute"],
+      tomorrow: ["morgen"],
+      yesterday: ["gestern"]
     }
   }
 
@@ -193,11 +221,11 @@ defmodule LocalizePad.Lexicon do
   ### Examples
 
       iex> LocalizePad.Lexicon.known_locales()
-      [:en]
+      [:de, :en]
 
   """
   @spec known_locales() :: [atom()]
   def known_locales do
-    Map.keys(@lexicons)
+    @lexicons |> Map.keys() |> Enum.sort()
   end
 end

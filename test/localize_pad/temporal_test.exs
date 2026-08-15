@@ -205,7 +205,7 @@ defmodule LocalizePad.TemporalTest do
     end
 
     test "spans are rendered in the sheet's locale" do
-      assert answer("7:30 to 20:45", locale: :de) == "13 Stunden, 15 Minuten"
+      assert answer("7:30 bis 20:45", locale: :de) == "13 Stunden, 15 Minuten"
     end
   end
 

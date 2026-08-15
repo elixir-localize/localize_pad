@@ -165,7 +165,7 @@ defmodule LocalizePad.MoneyTest do
 
     test "the denominator is named in the singular, in the sheet's locale" do
       assert answer("$99 per week", locale: :en) == "$99.00/week"
-      assert answer("99 EUR per week", locale: :de) == "99,00\u00A0€/Woche"
+      assert answer("99 EUR pro Woche", locale: :de) == "99,00\u00A0€/Woche"
     end
   end
 

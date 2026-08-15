@@ -63,6 +63,7 @@ Verified against the local checkouts and hex on 2026-08-15.
 | `ex_money` | 6.2.1 | 6.2.1 | `Money.t()` (Decimal + ISO 4217 / ISO 24165 crypto), locale-aware formatting with per-currency rounding, string parsing, live + historical exchange rates, `Money.Financial` (present/future value, NPV, IRR, `interest_rate`, `periods`, `payment`), subscriptions |
 | `localize_web` | 1.1.0 | 1.1.0 | Locale discovery plugs (header/param/path/session/cookie/TLD), session persistence into LiveView, compile-time localized routes + `~q` sigil, HTML select helpers for currencies/territories/locales/units/months |
 | `ex_tempo` | 1.2.0 | 1.2.0 | **The second pillar** (§4b). One interval type at any resolution; set algebra and Allen relations cross-zone and cross-calendar; RRULE recurrence; `select/2`; territory-aware workdays; `.ics` import with metadata that survives set operations; dependency scheduling with critical path; constraint networks; ISO 8601-1/-2, EDTF and IXDTF; `explain/1` |
+| `agenda` | — | 0.1.0 | Resource-constrained scheduling on top of Tempo. Resources with attributes, places as a tree (travel time derived), requirements, programmes, a ledger with holds, preferences, minimal-conflict reporting, and a solver bridge. **Not a line-level engine** — see §7a |
 | `calendrical` | 1.2.0 | 1.2.0 | **A complete locale-aware date/time/datetime/interval parser** (see below), 18 calendars, k-day functions, calendar intervals, timezone resolution, fiscal years, era handling |
 
 Four specific primitives are worth calling out because they change the design:
@@ -528,6 +529,36 @@ Ecto + Postgres from the start; sheets are the product, not an afterthought.
 
 ---
 
+## 7a. Where Agenda fits
+
+`agenda` sits one layer above Tempo: Tempo answers *when is this free*, Agenda answers *what
+should I book, and where*. It is the right engine for real-world scheduling, and it is the wrong
+engine for a notepad *line*.
+
+The reason is that its questions need a world that a sheet does not have. "Which rooms seat at
+least eight and have video conferencing" presupposes a resource database, attributes, and a place
+tree; declaring one on a notepad line would turn the notepad into a booking app. `Tempo.Schedule`
+is the fit for the §4b scheduling line, which is dependency scheduling — durations and
+prerequisites, no resources — and Agenda's own README draws exactly that distinction.
+
+Where Agenda *does* belong is a **scheduling sheet**: a second surface where a document declares
+resources and sessions and gets an arrangement back. That is a product direction rather than a
+feature, and the case for it is strong — `conflict/3` returning a *minimal* set ("any two of
+these three fit; choose which one moves") is the kind of answer no calendar app gives.
+
+Two of its design principles are already this project's, which is worth noting because it means
+the two would compose rather than argue:
+
+* **A failed match is a sentence, not a `false`.** `Agenda.explain/2` returns "Meeting room 2:
+  seats is 4 — needs at least 8". That is the same instinct as rendering a masked year as "A
+  masked year spanning the 1560s" rather than an ISO string.
+
+* **Refusing to guess.** Unmeasured travel returns `{:error, :unknown}` rather than an estimate,
+  and `expire/2` takes the moment as an argument rather than reading a clock — because arranging
+  the same programme twice must not give different answers. That is the rule this engine has
+  applied at every turn: a bare zone, a bare calendar, a missing exchange rate and a
+  month-to-day conversion all decline rather than invent.
+
 ## 7. What belongs upstream
 
 Following the house rule that a gap at the leaf usually belongs at the root:
@@ -778,13 +809,53 @@ One collision worth recording: `s` is the CLDR abbreviation for `second`, so `th
 as the number 1560 beside a *unit* and rendered as "1,560 seconds". The decade matcher accepts
 either classification, and there is a test that `3 s to ms` is still 3,000 milliseconds.
 
-Still outstanding in M5: `.ics` import and public holidays (one job — holidays arrive as an
-`.ics` feed), and dependency scheduling with critical path.
+**Deferred out of M5, deliberately.** `.ics` import with public holidays needs HTTP, a cache and
+an upload surface; dependency scheduling needs the Sheet to gather several lines and solve them
+together, which is the first document-*level* feature rather than a line-level one. Both are
+more temporal features on an already-strong temporal story, and M6 — half the product — was
+entirely unstarted. They come back after it.
 
-**M6 — The localization thesis.** Localized operator lexicon for `de`, `fr`, `es`, `ja`. Locale
-switch re-parses the document. Dates arrive already localized from M3, so this is purely about
-operator vocabulary and phrase word-order — narrower than it first looked. Deliverable: the
-other demo no notepad calculator can do.
+**M6 — The localization thesis. 🔨 German done end to end.** Localized operator lexicon for
+`de`, `fr`, `es`, `ja`. Locale switch re-parses the document. Deliverable: the other demo no
+notepad calculator can do.
+
+German first, as §9 said it should be. The whole sheet works:
+
+```
+1.234,5 Meter in Kilometer            1,2345 Kilometer
+100 Kilometer in Meilen              62,137119 Meilen
+3 Meter zu Fuß                          9,84252 Fuß
+20 % von 700                                     140
+10. Juni 2026 + 3 Wochen              1. Juli 2026
+7:30 bis 20:45                 13 Stunden, 15 Minuten
+99 EUR pro Woche                       99,00 €/Woche
+```
+
+**One gap had to be filled, and CLDR filled it.** `Localize.Unit` identifiers are English —
+`Localize.Unit.new(1, "Woche")` fails — so a German sheet could read `1.234,5` correctly and
+then be unable to say what it was 1234.5 *of*. But CLDR knows what a week is called in every
+locale, and turning `display_name/2` around gives a name-to-identifier index per locale built
+entirely from shipped data. `LocalizePad.Units` is that index. No German vocabulary is authored
+in it.
+
+The only thing written by hand for German is a page of operator words. That is the claim, and it
+holds.
+
+**Three findings.**
+
+The index must *not* be consulted for English. Unity's alias table is the English vocabulary and
+is deliberately narrower than CLDR — it omits `nights` so `3 nights` stays prose — and
+consulting CLDR for English silently undid that. Caught by the test written two milestones ago.
+
+Names collide within a locale: `week` and `week-person` are both "Wochen". The index is built
+simplest-identifier-first and never overwrites, so the word resolves to what someone writing it
+means.
+
+And the limit the plan predicted is real and now visible. `nach` is both "in" (conversion) and
+"after" (relative date); the lexicon maps one surface form to one role, so German keeps `nach`
+for "after" and uses `in` for conversion. Word *order* is the larger version — `20 is 10% of
+what` has no word-for-word German form — and that will need phrase rules per locale rather than
+vocabulary per locale. `fr`, `es` and `ja` are next, and each will test that further.
 
 M5 and M6 are the two thesis milestones; **their order is decision 3 below.** M5 is more
 demonstrable and easier to write about; M6 compounds — every locale added multiplies the
