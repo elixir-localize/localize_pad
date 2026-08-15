@@ -50,7 +50,7 @@ defmodule LocalizePad.Parser do
 
   """
 
-  alias LocalizePad.Token
+  alias LocalizePad.{Finance, Token}
 
   # {left, right} binding powers. Right < left makes an operator
   # right-associative, which is why `:pow` is {11, 10}.
@@ -103,6 +103,7 @@ defmodule LocalizePad.Parser do
           | {:binary, atom(), ast(), ast()}
           | {:convert, ast(), ast()}
           | {:phrase, :of | :off | :on, ast(), ast()}
+          | {:finance, atom(), map()}
 
   @doc """
   Parses a token stream into an AST.
@@ -148,6 +149,16 @@ defmodule LocalizePad.Parser do
   def parse(tokens, options \\ []) when is_list(tokens) do
     variables = options |> Keyword.get(:variables, []) |> MapSet.new()
 
+    # Financial phrases have three or four slots and no fixed word order, so
+    # they are recognised whole rather than assembled from infix operators.
+    # See `LocalizePad.Finance`.
+    case Finance.match(tokens) do
+      {:ok, node} -> {:ok, node}
+      :error -> parse_expression_tokens(tokens, variables)
+    end
+  end
+
+  defp parse_expression_tokens(tokens, variables) do
     case tokens |> skip_noise(variables) |> parse_expression(0, variables) do
       {:ok, ast, rest} ->
         case skip_noise(rest, variables) do

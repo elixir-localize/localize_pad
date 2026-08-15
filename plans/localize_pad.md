@@ -632,7 +632,7 @@ names that collide with ordinary words.
 Still outstanding in M3: `Calendrical.Interval` for quarter and week spans (currently declined
 rather than guessed), and `Kday` weekday phrases (`next Thursday`).
 
-**M4 — Percentages and money. ✅ Partly done.** The `Percentage` type against its truth table,
+**M4 — Percentages and money. ✅ Done.** The `Percentage` type against its truth table,
 `Rate`, `Money` values, currency conversion with `Money.ExchangeRates`, sales tax, the
 `Money.Financial` phrase forms. Deliverable: Soulver's percentage, currency, rates and finance
 pages pass as tests.
@@ -674,8 +674,20 @@ The operands cannot recover that distinction, so the preposition now survives in
 parser. That is the right shape for a phrase language generally, and the percentage phrases
 moved onto it too.
 
-Still outstanding in M4: the `Money.Financial` phrase forms (compound interest, mortgage
-repayments). Currency *conversion* is wired but inert until an `OPEN_EXCHANGE_RATES_APP_ID` is
+The financial phrases landed last, and they needed the phrase-matching stage the plan called
+"stage 3" but nothing had yet required. `monthly repayment on $10,000 over 6 years at 6%` has
+three slots joined by `on`/`of`/`for`/`after`/`over`/`at`/`@` in any order — a grammar for which
+would be a large table of near-duplicates.
+
+The way out is that the slots are unambiguous *by type*: exactly one money amount, one duration,
+one percentage, with no reading that could confuse them. So `LocalizePad.Finance` identifies the
+phrase from its noun and then takes each slot by type, ignoring the connectives entirely. It is
+the same forgiveness the rest of the language relies on, applied one level up — and it means
+phrasings nobody wrote down work anyway.
+
+Every figure agrees with Soulver to the cent, loan repayments included.
+
+Currency *conversion* remains wired but inert until an `OPEN_EXCHANGE_RATES_APP_ID` is
 configured; it reports the missing rate rather than inventing a number.
 
 **M5 — The temporal differentiator.** The `TemporalSet` value and the set-answer UI from §5.5

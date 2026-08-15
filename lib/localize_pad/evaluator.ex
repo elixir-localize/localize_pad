@@ -29,7 +29,7 @@ defmodule LocalizePad.Evaluator do
 
   alias Localize.Unit
   alias Localize.Unit.Math
-  alias LocalizePad.{Parser, Percentage, Rate, SalesTax, Temporal}
+  alias LocalizePad.{Finance, Parser, Percentage, Rate, SalesTax, Temporal}
   alias LocalizePad.Temporal.Zones
 
   # `Decimal` is in the lattice even though nothing in M1 produces one: the
@@ -120,6 +120,10 @@ defmodule LocalizePad.Evaluator do
 
   def eval({:tax, tax}, _environment) do
     {:ok, tax}
+  end
+
+  def eval({:finance, kind, slots}, _environment) do
+    Finance.evaluate(kind, slots)
   end
 
   def eval({:phrase, preposition, left, right}, environment) do

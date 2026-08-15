@@ -135,11 +135,19 @@ defmodule LocalizePad.Tokenizer do
   # scanner splits it into a stray `@` and the number, so put it back together
   # here rather than teaching the scanner about it.
   defp join_line_references([
-         %Token{kind: :word, source: "@"},
-         %Token{kind: :number, value: line} | rest
+         %Token{kind: :word, source: "@"} = at,
+         %Token{kind: :number, value: line} = number | rest
        ])
        when is_integer(line) do
-    [Token.new(:line_ref, line, "@#{line}") | join_line_references(rest)]
+    # `@ 7%` is "at seven percent", not a reference to line 7. A percent sign
+    # immediately after the number settles it.
+    case rest do
+      [%Token{kind: :operator, value: :percent} | _more] ->
+        [at, number | join_line_references(rest)]
+
+      _otherwise ->
+        [Token.new(:line_ref, line, "@#{line}") | join_line_references(rest)]
+    end
   end
 
   defp join_line_references([token | rest]), do: [token | join_line_references(rest)]

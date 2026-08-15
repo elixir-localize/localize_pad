@@ -199,6 +199,60 @@ defmodule LocalizePad.MoneyTest do
     end
   end
 
+  describe "financial phrases" do
+    doctest LocalizePad.Finance
+
+    # Every one of these agrees with Soulver's documented answer to the cent.
+    test "compound interest" do
+      assert answer("$1,000 after 3 years at 7%") == "$1,225.04"
+      assert answer("$1,000 for 3 years at 7% compounding monthly") == "$1,232.93"
+    end
+
+    test "interest earned" do
+      assert answer("interest on $1,000 after 3 years @ 7%") == "$225.04"
+    end
+
+    test "present value" do
+      assert answer("present value of $1,000 after 20 years at 10%") == "$148.64"
+    end
+
+    test "loan repayments" do
+      assert answer("monthly repayment on $10,000 over 6 years at 6%") == "$165.73"
+      assert answer("total repayment on $10,000 over 6 years at 6%") == "$11,932.48"
+    end
+
+    test "loan interest, which is the average over the term" do
+      assert answer("total interest on $10,000 over 6 years at 6%") == "$1,932.48"
+      assert answer("monthly interest on $10,000 over 6 years at 6%") == "$26.84"
+    end
+
+    test "the slots are found by type, not by word order" do
+      # No pattern is written down for any of these phrasings. There is one
+      # money amount, one duration and one percentage, and no reading in which
+      # they could be confused, so the connecting words need not be enumerated.
+      assert answer("monthly repayment $10,000 6 years 6%") == "$165.73"
+      assert answer("monthly repayment for $10,000 at 6% across 6 years") == "$165.73"
+      assert answer("$1,000 at 7% over 3 years") == "$1,225.04"
+    end
+
+    test "a label takes its words with it, including a financial noun" do
+      # `monthly repayment: …` is a labelled line, and the label is stripped
+      # before parsing so its digits cannot leak into the arithmetic. That is
+      # the right rule, but it does mean the noun the phrase needs goes with
+      # it. Writing the noun outside a label is what makes it count.
+      assert shown("monthly repayment: $10,000, 6 years, 6%") == nil
+    end
+
+    test "@ before a rate is 'at', not a line reference" do
+      assert answer("interest on $1,000 after 3 years @ 7%") == "$225.04"
+    end
+
+    test "an ordinary money line is not mistaken for a financial phrase" do
+      assert answer("$19 + $22") == "$41.00"
+      assert answer("$300 + 15%") == "$345.00"
+    end
+  end
+
   describe "totals" do
     test "money sums with money" do
       sheet = Sheet.new("$19\n$22", locale: :en)
