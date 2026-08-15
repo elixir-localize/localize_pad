@@ -313,6 +313,43 @@ defmodule LocalizePad.TemporalTest do
     end
   end
 
+  describe "workdays follow the reader's working week" do
+    # The clearest single case of the two halves of the product being the same
+    # thing. Soulver hardcodes Monday to Friday; CLDR knows better, Tempo reads
+    # it, and the territory comes from the sheet's own locale.
+    test "Friday is a workday in the US and not in Saudi Arabia" do
+      assert answer("is Friday, August 21, 2026 a workday", locale: :en) == "yes"
+      assert answer("is Friday, August 21, 2026 a workday", locale: :"ar-SA") == "no"
+    end
+
+    test "Sunday is the mirror image" do
+      assert answer("is Sunday, August 23, 2026 a workday", locale: :en) == "no"
+      assert answer("is Sunday, August 23, 2026 a workday", locale: :"ar-SA") == "yes"
+    end
+
+    test "counting working days between two dates" do
+      assert answer("workdays from April 12, 2026 to June 15, 2026") == "45"
+    end
+
+    test "shifting a date by working days skips the weekend" do
+      # A Thursday plus two working days is the following Monday.
+      assert answer("December 24, 2026 + 2 workdays") == "December 28, 2026"
+    end
+
+    test "naming the weekday, in the sheet's own language" do
+      assert answer("day of the week on January 24, 1984", locale: :en) == "Tuesday"
+      assert answer("day of the week on 24.01.1984", locale: :de) == "Dienstag"
+      assert answer("day of the week on 24/01/1984", locale: :fr) == "mardi"
+    end
+
+    test "public holidays are not counted yet" do
+      # Soulver answers December 30 here, because it treats Christmas as a
+      # holiday. Ours answers December 28: a workday is currently a non-weekend
+      # day, and holidays arrive with the `.ics` work.
+      refute answer("December 24, 2026 + 2 workdays") == "December 30, 2026"
+    end
+  end
+
   describe "the running total" do
     # Adding up the dates in a sheet is meaningless. Before this was guarded,
     # the first date seeded the accumulator and the total read as a date while

@@ -30,7 +30,7 @@ defmodule LocalizePad.Evaluator do
   alias Localize.Unit
   alias Localize.Unit.Math
   alias LocalizePad.{Finance, Parser, Percentage, Rate, SalesTax, Temporal}
-  alias LocalizePad.Temporal.{Recurrence, Window, Zones}
+  alias LocalizePad.Temporal.{Recurrence, Window, Workdays, Zones}
 
   # `Decimal` is in the lattice even though nothing in M1 produces one: the
   # number scanner can be asked for decimals, `Localize.Unit` values may carry
@@ -57,6 +57,8 @@ defmodule LocalizePad.Evaluator do
           | SalesTax.t()
           | Tempo.IntervalSet.t()
           | Window.t()
+          | boolean()
+          | String.t()
   @type environment :: %{optional(String.t()) => value()}
 
   @doc """
@@ -130,6 +132,10 @@ defmodule LocalizePad.Evaluator do
 
   def eval({:recurrence, rule, from}, _environment) do
     Recurrence.occurrences(rule, from)
+  end
+
+  def eval({:workdays, kind, slots}, _environment) do
+    Workdays.evaluate(kind, slots)
   end
 
   def eval({:phrase, preposition, left, right}, environment) do

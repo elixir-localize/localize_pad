@@ -732,8 +732,25 @@ whether they meet at all, and a zero is too easily read as a rounding artefact.
 The `and` operator required renumbering every binding power to make room beneath `to`, so that
 both operands are whole spans.
 
-Still outstanding in M5: `.ics` import, territory-aware workdays and holidays, `Tempo.explain/1`
-in the answer panel, dependency scheduling, and uncertainty/cross-calendar.
+Workdays came next, and they are the clearest single case of §4c — the two halves of the product
+being the same thing. Soulver defines a workday as Monday to Friday, which is true in most of the
+world and wrong in a great deal of it. CLDR knows every territory's working week, Tempo reads it,
+and the territory comes from the sheet's own locale, so `is Friday a workday` answers **yes** for
+a reader in `en-US` and **no** for one in `ar-SA` with nothing configured. Sunday is the mirror
+image. A temporal feature that is only correct because it is localized.
+
+`workdays from April 12 to June 15` counts 45, agreeing with Soulver. `December 24 + 2 workdays`
+gives December 28 where Soulver gives December 30, because Soulver counts Christmas and we do not
+yet have holidays — that gap has its own test so it cannot be forgotten.
+
+Two smaller things fell out. The value lattice gained booleans and text, because `is Friday a
+workday` deserves a word rather than `true` and a weekday's name is an answer like any other.
+And the sheet's locale now travels *in the AST node* rather than being read from the process at
+evaluation time, which is what makes `day of the week on 24.01.1984` answer "Dienstag" under
+`:de` rather than "Tuesday".
+
+Still outstanding in M5: `.ics` import and public holidays, `Tempo.explain/1` in the answer
+panel, dependency scheduling, and uncertainty/cross-calendar.
 
 **M6 — The localization thesis.** Localized operator lexicon for `de`, `fr`, `es`, `ja`. Locale
 switch re-parses the document. Dates arrive already localized from M3, so this is purely about

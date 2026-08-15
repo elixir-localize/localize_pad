@@ -102,6 +102,16 @@ defmodule LocalizePad.Value do
     {:ok, summarise(formatted, length(dates), locale)}
   end
 
+  # `is Friday a workday` deserves a word, not `true`. Not yet a translated
+  # message — the answer vocabulary arrives with the operator lexicon in M6.
+  def format(true, _options), do: {:ok, "yes"}
+  def format(false, _options), do: {:ok, "no"}
+
+  # Some answers are words rather than quantities — a weekday's name, and
+  # later an explanation of how a value was read. They are already localized
+  # by whatever produced them.
+  def format(text, _options) when is_binary(text), do: {:ok, text}
+
   def format(%LocalizePad.Temporal.Window{} = window, options) do
     LocalizePad.Temporal.Window.format(window, options)
   end
@@ -164,6 +174,8 @@ defmodule LocalizePad.Value do
           | :rate
           | :temporal_set
           | :window
+          | :boolean
+          | :text
           | :unknown
   def kind(%Unit{}), do: :quantity
   def kind(%Tempo{}), do: :temporal
@@ -175,6 +187,8 @@ defmodule LocalizePad.Value do
   def kind(%LocalizePad.Rate{}), do: :rate
   def kind(%Tempo.IntervalSet{}), do: :temporal_set
   def kind(%LocalizePad.Temporal.Window{}), do: :window
+  def kind(value) when is_boolean(value), do: :boolean
+  def kind(value) when is_binary(value), do: :text
   def kind(value) when is_number(value), do: :number
   def kind(_other), do: :unknown
 
