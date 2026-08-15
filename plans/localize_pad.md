@@ -815,7 +815,7 @@ together, which is the first document-*level* feature rather than a line-level o
 more temporal features on an already-strong temporal story, and M6 — half the product — was
 entirely unstarted. They come back after it.
 
-**M6 — The localization thesis. 🔨 German done end to end.** Localized operator lexicon for
+**M6 — The localization thesis. ✅ Five locales.** Localized operator lexicon for
 `de`, `fr`, `es`, `ja`. Locale switch re-parses the document. Deliverable: the other demo no
 notepad calculator can do.
 
@@ -855,7 +855,39 @@ And the limit the plan predicted is real and now visible. `nach` is both "in" (c
 "after" (relative date); the lexicon maps one surface form to one role, so German keeps `nach`
 for "after" and uses `in` for conversion. Word *order* is the larger version — `20 is 10% of
 what` has no word-for-word German form — and that will need phrase rules per locale rather than
-vocabulary per locale. `fr`, `es` and `ja` are next, and each will test that further.
+vocabulary per locale.
+
+**French, Spanish and Japanese followed, and each tested something German could not.**
+
+*French* needed the prefixed units German had got away without. `Localize.Unit.display_name/2`
+answers for prefixed identifiers — `kilometer` is "kilomètres" — but the prefixed forms are not
+in CLDR's unit list, so they have to be asked for by name. German hid this: "Kilometer" is the
+identifier `kilometer` but for its capital, and resolved through Unity's table by accident.
+`1234,5 mètres en kilomètres` failed until the index generated the prefixes people write against
+the units people prefix.
+
+*Spanish* is where a word carries two meanings that are both legitimate: `mañana` is "tomorrow"
+and "morning". It is read as the date, which is what a calculation wants; the other reading needs
+context a single line does not carry.
+
+*Japanese* broke the tokenizer outright — it has no word spaces, so whitespace splitting yields
+one enormous token. The first fix was a greedy longest-match against the vocabulary this program
+already knew, which worked on the example and was wrong in principle: an unknown word would be
+shattered a character at a time.
+
+`unicode_string` is the real answer — UAX #29 word breaking with ICU's dictionaries for exactly
+the scripts that need them (Chinese, Japanese, Thai, Khmer, Lao, Burmese). It finds *actual*
+words rather than familiar ones. It is now a dependency, and the dictionaries are a download
+step in `mix setup` and a cache in CI.
+
+It also has a bug, and a harmful one here.
+`Unicode.String.split("Japanese", break: :word, locale: "ja")` returns eight single letters,
+while the same call under `locale: "en"` correctly returns one word — the dictionary break is
+applied to the whole string rather than to the runs that need it. Single letters are disastrous
+in this engine because `J` is joule and `s` is second in Unity's abbreviation table, so
+`2026-06-15 → Japanese` produced a *wrong answer* rather than no answer. The tokenizer now
+partitions text by script and only hands dictionary-script runs to the splitter; the workaround
+comes out when the upstream fix lands.
 
 M5 and M6 are the two thesis milestones; **their order is decision 3 below.** M5 is more
 demonstrable and easier to write about; M6 compounds — every locale added multiplies the

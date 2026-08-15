@@ -135,6 +135,15 @@ jobs:
           key: astro-ephemeris-de440s
           fail-on-cache-miss: true
 
+      # Word-break dictionaries for the scripts written without spaces
+      # (Japanese, Chinese, Thai, Khmer, Lao, Burmese). Downloaded rather than
+      # vendored — they are large, and only the Japanese tests need them.
+      - name: Cache word-break dictionaries
+        uses: actions/cache@v5
+        with:
+          path: _build/test/lib/unicode_string/priv/dictionaries
+          key: unicode-dictionaries-${{ matrix.elixir }}-${{ matrix.otp }}
+
       - name: Check formatting
         if: matrix.lint
         run: mix format --check-formatted

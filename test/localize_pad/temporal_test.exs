@@ -362,7 +362,9 @@ defmodule LocalizePad.TemporalTest do
     test "the answer is localized, not transliterated" do
       # CLDR has patterns per calendar, so a Japanese date on a Japanese sheet
       # gets its imperial era and Japanese numerals.
-      assert answer("2026-06-15 in Japanese", locale: :ja) == "令和8年6月15日"
+      # Written with the Japanese conversion arrow, because `in` is not a
+      # Japanese word and a sheet in Japanese is read in Japanese.
+      assert answer("2026-06-15 → Japanese", locale: :ja) == "令和8年6月15日"
       assert answer("2026-06-15 in Buddhist", locale: :th) =~ "2569"
     end
 

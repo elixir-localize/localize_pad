@@ -86,6 +86,11 @@ defmodule LocalizePad.MixProject do
       # Required by Calendrical.TimeZone to resolve IANA zone names.
       {:tzdata, "~> 1.1"},
 
+      # UAX #29 word segmentation, including dictionary-based breaking for the
+      # scripts written without word spaces. Needs
+      # `mix unicode.string.download.dictionaries` — see `mix setup`.
+      {:unicode_string, "~> 2.3"},
+
       # Static analysis. Both are lint-row-only in CI.
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev], runtime: false}
@@ -103,6 +108,7 @@ defmodule LocalizePad.MixProject do
       setup: [
         "deps.get",
         "localize.download_locales",
+        "unicode.string.download.dictionaries",
         "ecto.setup",
         "assets.setup",
         "assets.build"
@@ -113,6 +119,7 @@ defmodule LocalizePad.MixProject do
       # cache for every locale in `:supported_locales` before it starts.
       test: [
         "localize.download_locales",
+        "unicode.string.download.dictionaries",
         "ecto.create --quiet",
         "ecto.migrate --quiet",
         "test"

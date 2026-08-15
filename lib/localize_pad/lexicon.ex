@@ -27,7 +27,7 @@ defmodule LocalizePad.Lexicon do
 
   ## Scope
 
-  English and German. German is the proof that the thesis holds: everything
+  English, German, French, Spanish and Japanese. German is the proof that the thesis holds: everything
   *except* this table — month names, weekday names, unit names, currency
   symbols, number separators, date field order — comes from CLDR, so adding a
   locale is a page of operator words rather than a translation project.
@@ -84,6 +84,38 @@ defmodule LocalizePad.Lexicon do
       off: ["weniger"],
       on: ["plus"],
       intersect: ["und", "∩"]
+    },
+    fr: %{
+      to: ["en", "vers"],
+      per: ["par"],
+      after: ["après"],
+      before: ["avant"],
+      # `20 % de 700`. `de` is one of the commonest words in French, so it
+      # claims more lines here than `of` does in English — the cost of a
+      # vocabulary-only lexicon.
+      of: ["de"],
+      intersect: ["et", "∩"]
+    },
+    es: %{
+      to: ["en", "a"],
+      per: ["por"],
+      after: ["después"],
+      before: ["antes"],
+      of: ["de"],
+      intersect: ["y", "∩"]
+    },
+    ja: %{
+      # Japanese marks its arguments with postpositional particles rather than
+      # with infix words. `100キロメートルをマイルで` reads "100 kilometres, as
+      # miles" — and `を` happens to sit *between* the two operands, so an
+      # infix parser can use it. That is luck rather than design: see the note
+      # on limits above.
+      to: ["を", "は", "→"],
+      per: ["あたり", "ごと"],
+      after: ["後"],
+      before: ["前"],
+      of: ["の"],
+      intersect: ["と", "∩"]
     }
   }
 
@@ -106,6 +138,27 @@ defmodule LocalizePad.Lexicon do
       today: ["heute"],
       tomorrow: ["morgen"],
       yesterday: ["gestern"]
+    },
+    fr: %{
+      now: ["maintenant"],
+      today: ["aujourd'hui"],
+      tomorrow: ["demain"],
+      yesterday: ["hier"]
+    },
+    es: %{
+      now: ["ahora"],
+      today: ["hoy"],
+      # `mañana` is both "tomorrow" and "morning". Read as the date, which is
+      # the reading a calculation wants; the other needs context this has none
+      # of.
+      tomorrow: ["mañana"],
+      yesterday: ["ayer"]
+    },
+    ja: %{
+      now: ["今"],
+      today: ["今日"],
+      tomorrow: ["明日"],
+      yesterday: ["昨日"]
     }
   }
 
@@ -212,6 +265,31 @@ defmodule LocalizePad.Lexicon do
   end
 
   @doc """
+  Returns the deictic table for a locale.
+
+  Used by the tokenizer to build a segmentation vocabulary for scripts written
+  without word spaces.
+
+  ### Arguments
+
+  * `locale` - a locale identifier.
+
+  ### Returns
+
+  * A map of moment to surface forms.
+
+  ### Examples
+
+      iex> LocalizePad.Lexicon.deictics(:en) |> Map.fetch!(:today)
+      ["today"]
+
+  """
+  @spec deictics(atom()) :: %{deictic() => [String.t()]}
+  def deictics(locale \\ :en) do
+    Map.get(@deictics, locale, @deictics.en)
+  end
+
+  @doc """
   Returns the locales that have an authored lexicon.
 
   ### Returns
@@ -221,7 +299,7 @@ defmodule LocalizePad.Lexicon do
   ### Examples
 
       iex> LocalizePad.Lexicon.known_locales()
-      [:de, :en]
+      [:de, :en, :es, :fr, :ja]
 
   """
   @spec known_locales() :: [atom()]

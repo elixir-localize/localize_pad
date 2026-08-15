@@ -334,17 +334,80 @@ defmodule LocalizePad.Tokenizer do
   defp tokenize_element(text, locale) when is_binary(text) do
     text
     |> String.split(@operator_pattern, include_captures: true, trim: true)
-    |> Enum.flat_map(&split_words/1)
+    |> Enum.flat_map(&split_words(&1, locale))
     |> Enum.map(&classify(&1, locale))
   end
 
+  # Languages written without word spaces. Splitting on whitespace yields one
+  # enormous token, so these are segmented against the locale's own vocabulary
+  # instead.
+  @unspaced ~w(ja zh th ko lo km my)
+
   # An operator match is already a single piece; anything else splits on
   # whitespace into candidate words.
-  defp split_words(piece) do
-    if Map.has_key?(@operators, piece) or piece == "->" do
-      [piece]
+  defp split_words(piece, locale) do
+    cond do
+      Map.has_key?(@operators, piece) or piece == "->" ->
+        [piece]
+
+      language(locale) in @unspaced ->
+        piece |> String.split(~r/\s+/, trim: true) |> Enum.flat_map(&segment(&1, locale))
+
+      true ->
+        String.split(piece, ~r/\s+/, trim: true)
+    end
+  end
+
+  # Segmentation for a script written without word spaces.
+  #
+  # The first attempt here was a greedy longest-match against the vocabulary
+  # this program happens to know. It worked for `100キロメートルをマイルで` and
+  # was wrong in principle: a word the program had never heard of would be
+  # shattered a character at a time, and `Japanese` became eight single letters
+  # of which `J` is joule in Unity's abbreviation table.
+  #
+  # `Unicode.String.split/2` is the real thing — UAX #29 word breaking, with
+  # ICU's dictionaries for the scripts that need them. It finds *actual* words
+  # rather than familiar ones, so an unrecognised Japanese word becomes one
+  # noise token instead of a handful of accidental units.
+  # Only the runs actually written in a dictionary script are handed to the
+  # dictionary splitter. Everything else — Latin words, digits, symbols — keeps
+  # its own boundaries.
+  #
+  # This is a guard against an upstream bug rather than an optimisation.
+  # `Unicode.String.split("Japanese", break: :word, locale: "ja")` returns
+  # `["J", "a", "p", "a", "n", "e", "s", "e"]`, while the same call under
+  # `locale: "en"` correctly returns `["Japanese"]` — the dictionary break is
+  # applied to the whole string instead of to the runs that need it. Single
+  # letters are disastrous here, because `J` is joule in Unity's abbreviation
+  # table and `s` is second.
+  @dictionary_script ~r/[\p{Han}\p{Hiragana}\p{Katakana}\p{Thai}\p{Khmer}\p{Lao}\p{Myanmar}]+/u
+
+  defp segment(text, locale) do
+    @dictionary_script
+    |> Regex.split(text, include_captures: true, trim: true)
+    |> Enum.flat_map(&segment_run(&1, locale))
+  end
+
+  defp segment_run(run, locale) do
+    if Regex.match?(@dictionary_script, run) do
+      dictionary_split(run, locale)
     else
-      String.split(piece, ~r/\s+/, trim: true)
+      String.split(run, ~r/\s+/u, trim: true)
+    end
+  end
+
+  defp dictionary_split(run, locale) do
+    case Unicode.String.split(run, break: :word, locale: language(locale), trim: true) do
+      pieces when is_list(pieces) ->
+        pieces
+
+      # The dictionaries are downloaded rather than vendored, so a checkout
+      # that has not run `mix unicode.string.download.dictionaries` gets an
+      # error here. Falling back to the whole run keeps the line readable as
+      # prose rather than failing it.
+      _unavailable ->
+        [run]
     end
   end
 
@@ -438,17 +501,17 @@ defmodule LocalizePad.Tokenizer do
     if language(locale) == "en", do: :error, else: Units.resolve(word, locale)
   end
 
-  defp language(locale) do
-    case Localize.validate_locale(locale) do
-      {:ok, tag} -> to_string(tag.language)
-      _other -> "en"
-    end
-  end
-
   defp calendar_plural(word) do
     case Map.fetch(@calendar_plurals, word) do
       {:ok, singular} -> Unity.Aliases.resolve(singular)
       :error -> {:error, :unknown_unit}
+    end
+  end
+
+  defp language(locale) do
+    case Localize.validate_locale(locale) do
+      {:ok, tag} -> to_string(tag.language)
+      _other -> "en"
     end
   end
 

@@ -27,6 +27,7 @@ See [plans/localize_pad.md](plans/localize_pad.md) for the full design and deliv
 | [`unity`](https://hex.pm/packages/unity) | The unit engine — ~2,760 units and unit arithmetic |
 | [`ex_money`](https://hex.pm/packages/ex_money) | Currencies, exchange rates, financial functions |
 | [`localize_web`](https://hex.pm/packages/localize_web) | Locale discovery plugs, localized routes, HTML helpers |
+| [`unicode_string`](https://hex.pm/packages/unicode_string) | UAX #29 word segmentation, with ICU dictionaries for scripts written without spaces |
 
 ## Getting started
 
@@ -35,7 +36,8 @@ mix setup
 ```
 
 That fetches dependencies, downloads CLDR locale data for the configured
-`:supported_locales`, creates the database, and builds assets. Then:
+`:supported_locales` and the Unicode word-break dictionaries, creates the
+database, and builds assets. Then:
 
 ```bash
 mix phx.server

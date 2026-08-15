@@ -27,13 +27,21 @@ defmodule LocalizePad.Units do
   keep working on a German sheet — SI abbreviations are international, and a
   reader who types them means them.
 
-  ## Base units only
+  ## Prefixed units
 
-  CLDR names the 155 base units; the SI-prefixed forms are generated from a
-  prefix pattern, and enumerating every localized prefixed variant would run to
-  thousands of entries for very little. In practice the prefixed spellings are
-  close enough to their identifiers to resolve through Unity's table anyway —
-  German "Kilometer" is the identifier `kilometer` but for its capital.
+  `display_name/2` answers for prefixed identifiers too — `kilometer` is
+  "kilomètres" in French and "キロメートル" in Japanese — but the prefixed forms
+  are not in CLDR's unit list, so they have to be asked for by name.
+
+  Asking for all of them would mean twenty prefixes against a hundred and
+  fifty-five units, most of which nobody writes. The index generates the
+  prefixes people use against the units people prefix, which is a couple of
+  hundred entries per locale.
+
+  German hid this: "Kilometer" is the identifier `kilometer` but for its
+  capital, so it resolved through Unity's table by accident. French and Spanish
+  do not have that luck, and `1234,5 mètres en kilomètres` failed until the
+  prefixed forms were indexed.
 
   """
 
@@ -106,10 +114,21 @@ defmodule LocalizePad.Units do
     end
   end
 
+  # The prefixes people write, against the units people prefix.
+  @prefixes ~w(kilo milli centi micro nano mega giga tera deci hecto)
+
+  @prefixable ~w(
+    meter gram liter second byte bit watt joule hertz ampere volt ohm
+    pascal newton tonne calorie mole
+  )
+
   defp build(locale) do
+    prefixed = for prefix <- @prefixes, unit <- @prefixable, do: prefix <> unit
+
     Localize.Unit.known_units_by_category()
     |> Map.values()
     |> List.flatten()
+    |> Kernel.++(prefixed)
     # Names collide: `week` and `week-person` are both "Wochen" in German. The
     # simpler identifier is what someone writing "Wochen" means, so process
     # units simplest-first and never overwrite.
