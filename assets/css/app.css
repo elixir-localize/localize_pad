@@ -103,3 +103,37 @@
 [data-phx-session], [data-phx-teleported-src] { display: contents }
 
 /* This file is for your main application CSS */
+
+/* The notepad's two columns.
+ *
+ * Line n of the text must sit at exactly the same height as answer n beside
+ * it, so both columns share one font stack and one line height. Change either
+ * value and you must change it for both — that is why they are set from the
+ * same custom properties rather than written twice.
+ *
+ * The text column does not soft-wrap: a wrapped line would take two rows on
+ * the left and one on the right, and every answer below it would drift out of
+ * alignment. Long lines scroll sideways instead.
+ */
+:root {
+  --sheet-font: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
+  --sheet-line-height: 1.75rem;
+  --sheet-font-size: 0.9375rem;
+}
+
+.sheet-text,
+.sheet-answers {
+  font-family: var(--sheet-font);
+  font-size: var(--sheet-font-size);
+  line-height: var(--sheet-line-height);
+  font-variant-numeric: tabular-nums;
+}
+
+.sheet-text {
+  white-space: pre;
+  tab-size: 2;
+}
+
+.sheet-answers > div {
+  height: var(--sheet-line-height);
+}

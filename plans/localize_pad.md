@@ -569,22 +569,54 @@ survives into the LiveView process, and six tests covering discovery, precedence
 persistence. The CI matrix has **no OTP 25/26 rows** — Tempo requires OTP 27+ — which is a
 deliberate deviation from the reference workflow.
 
-**M1 — Engine skeleton, English only.** Value lattice, tokenizer over
+**M1 — Engine skeleton, English only. ✅ Done.** Value lattice, tokenizer over
 `Localize.Number.Parser.scan/2`, Pratt expression parser, numbers + units + arithmetic +
 conversion. Line classification, variables, line references, dependency graph, subtotals.
 Deliverable: `LocalizePad.Sheet.eval/2` handling Unity's example set line by line.
 
-**M2 — The LiveView.** Two-column textarea editor, debounced recalculation, running total,
-answer gutter using `Localize.Number.to_parts/2`, locale picker via `localize_web`.
-Deliverable: the app is usable and shareable.
+Built as `Tokenizer` → `Parser` → `Evaluator` → `Line` → `Sheet`. Two findings worth carrying
+forward. First, the ambiguity of `in` (conversion keyword vs `inch`) cannot be settled
+lexically, so tokens carry *both* readings and the parser picks by position — and the tiebreak
+that makes `12 ft + 3 in` work is whether an operand follows. Second, treating a unit as an
+ordinary operand meaning "one of these" collapses quantity, compound-unit and juxtaposition
+nodes out of the AST entirely: `3 meters` is just `3 × meter`, and `m/s` is a division.
 
-**M3 — Time, foundations.** Moved ahead of money, because time is now the headline. Wire
+**M2 — The LiveView. ✅ Done.** Two-column textarea editor, debounced recalculation, running
+total, locale picker via `localize_web`. Deliverable: the app is usable and shareable.
+
+Column alignment is load-bearing and fragile: the text column must not soft-wrap, or a wrapped
+line takes two rows on the left and one on the right and every answer below it drifts. Both
+columns therefore share one font stack and line height, set from the same custom properties.
+
+Deferred: styling the answer gutter from `Localize.Number.to_parts/2`. It is cosmetic until the
+value lattice is richer, and worth doing when money and temporal answers need visual structure.
+
+**M3 — Time, foundations. ✅ Mostly done.** Moved ahead of money, because time is now the
+headline. Wire
 `Calendrical.parse/2` into stage 2 with span-candidate windows; adopt `Tempo.t()` as *the*
 temporal value; relative-date vocabulary, nearest-year resolution, clock-time semantics
 (including Soulver's ambiguous `5pm - 7pm`), durations, `Calendrical.Interval` for
 quarter/month/week spans, `Kday` for weekday phrases, `TimeZone.resolve/3` plus the city/IATA
 table. Deliverable: Soulver's dates and time pages pass — **and, because `Calendrical.parse/2`
 is CLDR-pattern driven, they pass in every locale at the same time**, not just English.
+
+Landed: the temporal scanner (candidate windows over raw text, offered to `Calendrical.parse/2`
+with `as: :map`), `Tempo` as the temporal value, the nearest-year rule, date ± duration, the
+span between two dates, `after`/`before` phrasing, and localized rendering of both dates and
+durations. Durations needed no new machinery at all — `3 weeks` is already a `Localize.Unit`
+quantity, so the unit engine supplies them and one small adapter turns them into
+`Tempo.Duration`.
+
+The shape filter turned out to be the whole game. `Calendrical.parse/2` will read `2026` as a
+year and `11` as an hour, so an unfiltered scanner turns every number in every sheet into a
+date. Two rounds of tightening were needed: the first version claimed `9.8` and `0.5` because
+digit-separator-digit matches a decimal point. A separated date now requires *two* separators.
+The cost is that `3/4` is not read as a date — correct, since it is genuinely indistinguishable
+from division.
+
+Still outstanding in M3: clock-time semantics beyond parsing (`5pm - 7pm` as a span),
+`Calendrical.Interval` for quarter and week spans (currently declined rather than guessed),
+`Kday` weekday phrases, and timezone resolution with the city/IATA table.
 
 **M4 — Percentages and money.** The `Percentage` type against its truth table, `Rate`,
 `Money` values, currency conversion with `Money.ExchangeRates`, sales tax, the `Money.Financial`
@@ -644,14 +676,18 @@ and worth building during M1.
   `Calendrical.parse/2`, which is whole-string anchored. `12/02/1988 + 32 years` must not have
   `12/02/1988 + 32` swallowed as a range, and `100/5` must not become a date. Window selection
   order and a cheap shape pre-filter matter here.
-* **`:supported_locales` does not appear to gate `validate_locale/1` the way its
-  documentation reads.** With `supported_locales: [:en, :de, :fr, :es, :ja]` configured,
-  `Localize.validate_locale("xx")` is correctly rejected, but `validate_locale("not-a-locale")`
-  returns `{:ok, ~t"not"}` — "not" being a real ISO 639-3 code (Nomatsiguenga). So a crafted
-  `?locale=` can put a sheet into a locale we never intended to support, and in this app that
-  changes how numbers and dates *parse*, not just how they render. Not a crash, and covered by a
-  test that will fail loudly if it is tightened upstream — but it needs an answer from Localize
-  before the locale picker ships in M2. Found during M0.
+* **Read `cldr_locale_id`, never `language`, when deciding how to parse or format.** Localize is
+  deliberately permissive: any *syntactically valid* language tag is accepted, and the returned
+  `LanguageTag` carries two different things. `:language` preserves what the user asked for;
+  `:cldr_locale_id` is the configured locale that actually supplies the data. So
+  `validate_locale("not-a-locale")` succeeds with `language: :not` (a real ISO 639-3 code) but
+  `cldr_locale_id: :en`, and `"pt-BR"` gives `language: :pt` with `cldr_locale_id: :en` when `pt`
+  is not in `:supported_locales`. Only a genuinely invalid tag — `"zz-junk"` — is rejected.
+
+  The consequence for us is good: a crafted `?locale=` cannot make a sheet parse under a locale
+  we never configured, because the data always comes from a configured one. The trap is
+  ours to avoid — any code that branches on the locale must read `cldr_locale_id`, since
+  `language` may name a locale we have no data for.
 * **LiveView keystroke latency** on poor connections (§6.2).
 * **FX data**: Open Exchange Rates' free tier is USD-base only and rate-limited; historical
   rates and crypto may need a paid tier. Budget or scope decision.

@@ -32,7 +32,7 @@ defmodule LocalizePadWeb.Router do
   scope "/", LocalizePadWeb do
     pipe_through :browser
 
-    get "/", PageController, :home
+    live "/", SheetLive
   end
 
   # Other scopes may use custom stacks.

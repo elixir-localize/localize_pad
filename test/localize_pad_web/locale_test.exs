@@ -61,18 +61,23 @@ defmodule LocalizePadWeb.LocaleTest do
       assert %Localize.LanguageTag{cldr_locale_id: :en} = PutLocale.get_locale(conn)
     end
 
-    # Documents a live question rather than blessing the behaviour: `:localize`
-    # is configured with `supported_locales: [:en, :de, :fr, :es, :ja]`, but
-    # `?locale=not-a-locale` still resolves — "not" is a real ISO 639-3 code
-    # (Nomatsiguenga) and validation lets it through. The request survives,
-    # which is what this asserts; whether an out-of-list locale *should* be
-    # accepted is an open question with Localize. If it is tightened upstream,
-    # this test starts failing loudly, which is the point.
-    test "an off-list but syntactically real locale does not crash the request", %{conn: conn} do
+    # Localize is deliberately permissive: any syntactically valid language tag
+    # is accepted, and the resulting tag carries both what was asked for
+    # (`:language`) and the configured locale whose data will actually be used
+    # (`:cldr_locale_id`). "not" is a real ISO 639-3 code (Nomatsiguenga), so it
+    # validates — but it is not in `:supported_locales`, so the data falls back
+    # to `:en`.
+    #
+    # That fallback is the property this app depends on, and it is what this
+    # test pins: an off-list locale can never make a sheet parse numbers or
+    # dates using data we did not configure.
+    test "an off-list locale still formats and parses using configured data", %{conn: conn} do
       conn = get(conn, ~p"/?locale=not-a-locale")
 
       assert conn.status == 200
-      assert %Localize.LanguageTag{} = PutLocale.get_locale(conn)
+
+      assert %Localize.LanguageTag{language: :not, cldr_locale_id: :en} =
+               PutLocale.get_locale(conn)
     end
   end
 end
