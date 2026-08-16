@@ -51,4 +51,20 @@ Locale: `en`
 // The word can follow the value directly, which
 // is the natural order in most languages.
 42.195 km locally
+
+# What the quantity is for
+
+// The territory alone says an American measures
+// length in feet. Saying what the number is *for*
+// is what turns a height into feet and inches,
+// and a body weight into stone for a British
+// reader.
+1.8 m in local height units
+70 kg in local weight units
+2 litres in local fluid units
+
+// These words only count directly after `local`,
+// so `height` is still yours to use as a name.
+height = 1.8 m
+height * 2
 ```

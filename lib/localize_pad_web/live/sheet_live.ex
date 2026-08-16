@@ -181,6 +181,7 @@ defmodule LocalizePadWeb.SheetLive do
      |> assign(:source, @sample)
      |> assign(:locale_options, Locales.suggestions())
      |> assign(:locale_error, nil)
+     |> assign(:prefer_local, false)
      |> assign(:examples, Examples.all())
      |> assign(:selected, nil)
      |> recalculate()}
@@ -287,6 +288,16 @@ defmodule LocalizePadWeb.SheetLive do
      |> assign(:detail, detail_for(socket.assigns.sheet, selected, socket.assigns.locale))}
   end
 
+  # A reading preference rather than an edit, so it is neither broadcast to the
+  # other windows nor written into the shared link: it changes how this screen
+  # renders the sheet, not what the sheet says.
+  def handle_event("toggle_local_units", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:prefer_local, not socket.assigns.prefer_local)
+     |> recalculate()}
+  end
+
   def handle_event("set_locale", %{"locale" => locale}, socket) do
     case Locales.resolve(locale) do
       {:ok, language_tag} ->
@@ -358,7 +369,11 @@ defmodule LocalizePadWeb.SheetLive do
   end
 
   defp recalculate(socket) do
-    sheet = Sheet.new(socket.assigns.source, locale: socket.assigns.locale)
+    sheet =
+      Sheet.new(socket.assigns.source,
+        locale: socket.assigns.locale,
+        prefer_local: socket.assigns.prefer_local
+      )
 
     socket
     |> assign(:sheet, sheet)
@@ -509,6 +524,19 @@ defmodule LocalizePadWeb.SheetLive do
             title="Download this sheet as Markdown (⌘S)"
           >
             Download
+          </button>
+
+          <%!-- Off by default. A sheet says what its author wrote, and
+                rewriting every quantity into the reader's units is a choice
+                they should make rather than one made for them. --%>
+          <button
+            type="button"
+            phx-click="toggle_local_units"
+            class={["btn btn-sm", (@prefer_local && "btn-active") || "btn-ghost"]}
+            aria-pressed={to_string(@prefer_local)}
+            title="Show every answer in this locale's own units"
+          >
+            My units
           </button>
 
           <%!-- A combobox rather than a select, because the set of useful

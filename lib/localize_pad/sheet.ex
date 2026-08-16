@@ -36,10 +36,11 @@ defmodule LocalizePad.Sheet do
 
   @type t :: %__MODULE__{
           locale: Locales.tag(),
+          prefer_local: boolean(),
           lines: [Line.t()]
         }
 
-  defstruct locale: :en, lines: []
+  defstruct locale: :en, prefer_local: false, lines: []
 
   @doc """
   Builds and evaluates a sheet from its source text.
@@ -72,11 +73,13 @@ defmodule LocalizePad.Sheet do
   def new(source, options \\ []) when is_binary(source) do
     locale = options |> Keyword.get_lazy(:locale, &Localize.get_locale/0) |> resolve_locale()
 
+    prefer_local = Keyword.get(options, :prefer_local, false)
+
     source
     |> String.split("\n")
     |> Enum.with_index()
     |> Enum.map(fn {text, index} -> Line.classify(index, text) end)
-    |> then(&%__MODULE__{locale: locale, lines: &1})
+    |> then(&%__MODULE__{locale: locale, prefer_local: prefer_local, lines: &1})
     |> evaluate()
   end
 
@@ -100,6 +103,7 @@ defmodule LocalizePad.Sheet do
       answers: %{},
       declared_at: %{},
       locale: sheet.locale,
+      prefer_local: sheet.prefer_local,
       lines: []
     }
 
@@ -123,7 +127,7 @@ defmodule LocalizePad.Sheet do
     line = %{
       line
       | value: value,
-        formatted: value && format(value, state.locale),
+        formatted: value && format(value, state.locale, state.prefer_local),
         depends_on: MapSet.new(Enum.map(covered, & &1.index))
     }
 
@@ -535,8 +539,8 @@ defmodule LocalizePad.Sheet do
 
   defp summable?(value), do: Value.kind(value) in [:number, :quantity, :money]
 
-  defp format(value, locale) do
-    case Value.format(value, locale: locale) do
+  defp format(value, locale, prefer_local) do
+    case Value.format(value, locale: locale, prefer_local: prefer_local) do
       {:ok, formatted} -> formatted
       {:error, _reason} -> nil
     end

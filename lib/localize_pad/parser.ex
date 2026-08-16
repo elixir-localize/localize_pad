@@ -104,7 +104,7 @@ defmodule LocalizePad.Parser do
           | {:currency, atom()}
           | {:tax, LocalizePad.SalesTax.t()}
           | {:calendar, module()}
-          | {:preference, term()}
+          | {:preference, term(), atom()}
           | {:neg, ast()}
           | {:binary, atom(), ast(), ast()}
           | {:convert, ast(), ast()}
@@ -252,8 +252,12 @@ defmodule LocalizePad.Parser do
     {:ok, {:tax, tax}, rest}
   end
 
-  defp parse_prefix([%Token{kind: :preference, value: locale} | rest], _variables, _binding_power) do
-    {:ok, {:preference, locale}, rest}
+  defp parse_prefix(
+         [%Token{kind: :preference, value: {locale, usage}} | rest],
+         _variables,
+         _binding_power
+       ) do
+    {:ok, {:preference, locale, usage}, rest}
   end
 
   defp parse_prefix([%Token{kind: :calendar, value: calendar} | rest], _variables, _binding_power) do
@@ -323,8 +327,8 @@ defmodule LocalizePad.Parser do
   defp parse_infix(left, tokens, minimum_binding_power, variables)
        when minimum_binding_power <= 3 do
     case skip_noise(tokens, variables) do
-      [%Token{kind: :preference, value: locale} | rest] ->
-        {:convert, left, {:preference, locale}}
+      [%Token{kind: :preference, value: {locale, usage}} | rest] ->
+        {:convert, left, {:preference, locale, usage}}
         |> parse_infix(rest, minimum_binding_power, variables)
 
       tokens ->

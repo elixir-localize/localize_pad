@@ -181,7 +181,12 @@ defmodule LocalizePad.Line do
 
     case attempt(expression, context) do
       {:ok, value, ast} ->
-        %{line | value: value, formatted: format(value, locale), error: nil}
+        %{
+          line
+          | value: value,
+            formatted: format(value, locale, prefer_local(context, ast)),
+            error: nil
+        }
         |> put_dependencies(ast, variables, context)
 
       {:error, reason} ->
@@ -254,11 +259,23 @@ defmodule LocalizePad.Line do
     end
   end
 
-  defp format(value, locale) do
-    case Value.format(value, locale: locale) do
+  defp format(value, locale, prefer_local) do
+    case Value.format(value, locale: locale, prefer_local: prefer_local) do
       {:ok, formatted} -> formatted
       {:error, _reason} -> nil
     end
+  end
+
+  # The always-in-my-units setting yields to a line that named its own unit.
+  # `3 meters to feet` asked for feet, and answering in metres because the
+  # reader is Australian would override the question with a preference — which
+  # is the opposite of what the setting is for.
+  #
+  # Only the outermost conversion counts. A unit named deeper in an expression
+  # is an operand rather than the answer's unit, and `(3 m to ft) + 1 ft` is a
+  # sum whose unit the reader never stated.
+  defp prefer_local(context, ast) do
+    Map.get(context, :prefer_local, false) and not match?({:convert, _left, _right}, ast)
   end
 
   # A line reference is resolved against answers already computed. References

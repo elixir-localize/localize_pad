@@ -40,4 +40,19 @@ welcher Wochentag ist der 24.01.1984
 
 16.05.2026 + 3 Wochen
 10.01.2027 - 05.02.2027
+
+# Ortsübliche Einheiten
+
+// `lokal` fragt nach den Einheiten, die hier
+// üblich sind. In Deutschland ändert sich dabei
+// wenig — und genau das ist der Punkt. Stellen
+// Sie oben en-US ein, und dieselben Zeilen
+// antworten in Meilen und Pfund.
+42,195 km lokal
+70 kg lokal
+
+// Wozu die Größe dient, entscheidet mit: eine
+// Körpergröße schreibt man anders als eine
+// Entfernung.
+1,8 m in lokale Größe
 ```

@@ -425,18 +425,49 @@ defmodule LocalizePad.Tokenizer do
   # vocabulary, but the ordering costs nothing and the alternative is a rule
   # nobody can see.
   defp mark_preferences(tokens, locale) do
-    Enum.map(tokens, fn
-      %Token{kind: :word, source: word} = token ->
-        if Lexicon.preference?(word, lexicon_locale(locale)) do
-          Token.covering(Token.new(:preference, locale, word), [token])
-        else
-          token
-        end
-
-      token ->
-        token
-    end)
+    mark_preferences(tokens, locale, lexicon_locale(locale))
   end
+
+  defp mark_preferences([], _locale, _lexicon), do: []
+
+  defp mark_preferences([%Token{kind: :word, source: word} = token | rest], locale, lexicon) do
+    if Lexicon.preference?(word, lexicon) do
+      {covered, rest} = with_usage(token, rest, lexicon)
+      usage = usage_of(covered, lexicon)
+      source = Enum.map_join(covered, " ", & &1.source)
+
+      [
+        Token.covering(Token.new(:preference, {locale, usage}, source), covered)
+        | mark_preferences(rest, locale, lexicon)
+      ]
+    else
+      [token | mark_preferences(rest, locale, lexicon)]
+    end
+  end
+
+  defp mark_preferences([token | rest], locale, lexicon) do
+    [token | mark_preferences(rest, locale, lexicon)]
+  end
+
+  # A usage word counts only directly after the preference word, which is what
+  # lets `height` and `weight` stay ordinary variable names everywhere else.
+  defp with_usage(token, [%Token{kind: :word, source: word} = next | rest], lexicon) do
+    case Lexicon.usage(word, lexicon) do
+      {:ok, _usage} -> {[token, next], rest}
+      :error -> {[token], [next | rest]}
+    end
+  end
+
+  defp with_usage(token, rest, _lexicon), do: {[token], rest}
+
+  defp usage_of([_preference, %Token{source: word}], lexicon) do
+    case Lexicon.usage(word, lexicon) do
+      {:ok, usage} -> usage
+      :error -> :default
+    end
+  end
+
+  defp usage_of(_covered, _lexicon), do: :default
 
   # A calendar's name is only ever a conversion target, so like a zone it is
   # marked but declines to be a value on its own.

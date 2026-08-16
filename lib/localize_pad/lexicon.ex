@@ -266,6 +266,61 @@ defmodule LocalizePad.Lexicon do
     ja: ["現地", "ローカル"]
   }
 
+  # What the quantity is *for*, which is the other half of what CLDR needs to
+  # pick a unit. The territory alone says an American measures length in feet;
+  # the usage is what makes 1.8 m come back as `5 foot 10.87 inch` rather than
+  # `5.91 foot`, and what gives a British weight in stone.
+  #
+  # These words are only read as usages directly after the preference word —
+  # `in local height units`, never `height` on its own. That is what keeps
+  # `height = 1.8 m` a declaration: a calculator whose vocabulary quietly
+  # claimed `height`, `weight` and `floor` would break more sheets than the
+  # feature is worth.
+  @usages %{
+    en: %{
+      "height" => :person_height,
+      "weight" => :person,
+      "body" => :person,
+      "fluid" => :fluid,
+      "drink" => :fluid,
+      "road" => :road,
+      "land" => :land,
+      "floor" => :floor_space
+    },
+    de: %{
+      "körpergröße" => :person_height,
+      "größe" => :person_height,
+      "gewicht" => :person,
+      "flüssigkeit" => :fluid,
+      "straße" => :road,
+      "land" => :land,
+      "wohnfläche" => :floor_space
+    },
+    fr: %{
+      "taille" => :person_height,
+      "poids" => :person,
+      "liquide" => :fluid,
+      "route" => :road,
+      "terrain" => :land,
+      "surface" => :floor_space
+    },
+    es: %{
+      "altura" => :person_height,
+      "peso" => :person,
+      "líquido" => :fluid,
+      "carretera" => :road,
+      "terreno" => :land,
+      "superficie" => :floor_space
+    },
+    ja: %{
+      "身長" => :person_height,
+      "体重" => :person,
+      "液体" => :fluid,
+      "道路" => :road,
+      "土地" => :land
+    }
+  }
+
   # Words naming a moment relative to the present. Kept separate from the role
   # table because these are *operands* rather than operators — `today` is a
   # date, not something that acts on one.
@@ -684,6 +739,43 @@ defmodule LocalizePad.Lexicon do
   @spec preference?(String.t(), Locales.locale()) :: boolean()
   def preference?(word, locale \\ :en) when is_binary(word) do
     String.downcase(word) in Map.get(@preferences, language(locale), @preferences.en)
+  end
+
+  @doc """
+  What a word says the quantity is used for, if anything.
+
+  Only meaningful directly after a preference word — see `preference?/2`.
+  Lookup is case-insensitive.
+
+  ### Arguments
+
+  * `word` - the surface form to look up.
+
+  * `locale` - the locale whose vocabulary to read.
+
+  ### Returns
+
+  * `{:ok, usage}` where usage is a CLDR unit-preference usage.
+
+  * `:error` when the word names no usage.
+
+  ### Examples
+
+      iex> LocalizePad.Lexicon.usage("height", :en)
+      {:ok, :person_height}
+
+      iex> LocalizePad.Lexicon.usage("Gewicht", :de)
+      {:ok, :person}
+
+      iex> LocalizePad.Lexicon.usage("units", :en)
+      :error
+
+  """
+  @spec usage(String.t(), Locales.locale()) :: {:ok, atom()} | :error
+  def usage(word, locale \\ :en) when is_binary(word) do
+    @usages
+    |> Map.get(language(locale), @usages.en)
+    |> Map.fetch(String.downcase(word))
   end
 
   # The tables above are keyed by language, and a sheet carries a whole

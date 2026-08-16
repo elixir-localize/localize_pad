@@ -67,7 +67,7 @@ defmodule LocalizePad.Evaluator do
           | {:calendar, module()}
           # `local units` — a conversion target that names the reader rather
           # than a unit, carrying the tag it was read under.
-          | {:preference, LocalizePad.Locales.tag()}
+          | {:preference, LocalizePad.Locales.tag(), atom()}
   @type environment :: %{optional(String.t()) => value()}
 
   @doc """
@@ -139,8 +139,8 @@ defmodule LocalizePad.Evaluator do
     {:ok, {:calendar, calendar}}
   end
 
-  def eval({:preference, locale}, _environment) do
-    {:ok, {:preference, locale}}
+  def eval({:preference, locale, usage}, _environment) do
+    {:ok, {:preference, locale, usage}}
   end
 
   def eval({:finance, kind, slots}, _environment) do
@@ -640,8 +640,8 @@ defmodule LocalizePad.Evaluator do
   # Australian is 5 foot 10.87 inches to an American, and CLDR says so by
   # returning both parts — so the list is kept rather than flattened to its
   # first element, and `LocalizePad.Value` renders it.
-  defp convert(%Unit{} = source, {:preference, locale}) do
-    case Localize.Unit.localize(source, locale: locale) do
+  defp convert(%Unit{} = source, {:preference, locale, usage}) do
+    case Localize.Unit.localize(source, locale: locale, usage: usage) do
       {:ok, [single]} -> {:ok, single}
       {:ok, parts} when is_list(parts) -> {:ok, parts}
       {:error, _reason} -> {:error, :no_local_unit}

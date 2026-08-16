@@ -69,8 +69,20 @@ defmodule LocalizePad.Value do
           {:ok, String.t()} | {:error, term()}
   def format(value, options \\ [])
 
+  # `:prefer_local` expresses the quantity the way the reader's territory would
+  # before rendering it — `42.195 km` as `26.2 miles` for an American. It is a
+  # display choice and never touches the value, so the running total and every
+  # `@n` reference still work on what the sheet actually computed.
+  #
+  # A quantity CLDR has no preference for is rendered as it stands rather than
+  # refused. This is a preference, not a request: the reader asked for their
+  # own units where that means something, not for silence where it does not.
   def format(%Unit{} = unit, options) do
-    Unit.to_string(unit, format_options(options))
+    if Keyword.get(options, :prefer_local, false) do
+      unit |> localize(options) |> format_localized(options)
+    else
+      Unit.to_string(unit, format_options(options))
+    end
   end
 
   # A single answer written in more than one unit: `5 feet, 10.87 inches`.
@@ -334,5 +346,19 @@ defmodule LocalizePad.Value do
       Keyword.get(options, :maximum_fractional_digits, @default_maximum_fractional_digits)
 
     [locale: locale_of(options), max_fractional_digits: maximum]
+  end
+
+  defp localize(unit, options) do
+    case Unit.localize(unit, locale: locale_of(options)) do
+      {:ok, parts} -> parts
+      {:error, _no_preference} -> unit
+    end
+  end
+
+  # `:prefer_local` is dropped here, so a localized quantity is rendered rather
+  # than localized again — the list clause above walks its parts back through
+  # `format/2`, and a second pass would ask CLDR to convert what it just chose.
+  defp format_localized(value, options) do
+    format(value, Keyword.delete(options, :prefer_local))
   end
 end
