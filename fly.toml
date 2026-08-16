@@ -21,7 +21,7 @@ kill_signal = "SIGTERM"
 [build]
 
 [env]
-  PHX_HOST = "localize-pad.fly.dev"
+  PHX_HOST = "pad.elixir-localize.com"
   PORT = "8080"
   # The locale a sheet opens in when the browser asks for nothing in
   # particular. Every Localize-family app sets this explicitly rather than

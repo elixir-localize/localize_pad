@@ -24,22 +24,26 @@ config :localize_pad, LocalizePadWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
 if config_env() == :prod do
-  database_url =
-    System.get_env("DATABASE_URL") ||
-      raise """
-      environment variable DATABASE_URL is missing.
-      For example: ecto://USER:PASS@HOST/DATABASE
-      """
+  # A sheet lives in the browser and in the links people share; nothing reads
+  # or writes the database yet. Postgres arrives with accounts, so a deployment
+  # without one is a real configuration rather than a mistake — the generated
+  # `raise` here would refuse to boot an application that does not need it.
+  #
+  # When the variable is absent the repository is simply not started; see
+  # `LocalizePad.Application`. Once accounts land, this reverts to demanding it.
+  if database_url = System.get_env("DATABASE_URL") do
+    maybe_ipv6 = if System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: []
 
-  maybe_ipv6 = if System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: []
-
-  config :localize_pad, LocalizePad.Repo,
-    # ssl: true,
-    url: database_url,
-    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
-    # For machines with several cores, consider starting multiple pools of `pool_size`
-    # pool_count: 4,
-    socket_options: maybe_ipv6
+    config :localize_pad, LocalizePad.Repo,
+      # ssl: true,
+      url: database_url,
+      pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
+      # For machines with several cores, consider starting multiple pools of `pool_size`
+      # pool_count: 4,
+      socket_options: maybe_ipv6
+  else
+    config :localize_pad, start_repo: false
+  end
 
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you
