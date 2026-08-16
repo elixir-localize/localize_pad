@@ -3,15 +3,17 @@ Locale: `de`
 ```
 # Ein deutsches Blatt
 
-// Dieselbe Maschine, dieselben Zahlen — nur diesmal auf Deutsch.
-// Nicht nur die Antworten sind übersetzt, sondern auch die Fragen.
+// Dieselbe Maschine, dieselben Zahlen — nur
+// diesmal auf Deutsch. Nicht nur die Antworten
+// sind übersetzt, sondern auch die Fragen.
 
 # Zahlen werden deutsch gelesen
 
 1.234,5 + 1
 
-// In einem englischen Blatt wäre das eine ganz andere Zahl.
-// Der Punkt ist hier das Tausendertrennzeichen, das Komma das Komma.
+// In einem englischen Blatt wäre das eine ganz
+// andere Zahl. Der Punkt ist hier das
+// Tausendertrennzeichen, das Komma das Komma.
 
 # Einheiten kommen aus CLDR
 

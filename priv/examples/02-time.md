@@ -3,8 +3,9 @@ Locale: `en`
 ```
 # Questions about time
 
-// Most calculators stop at arithmetic. These are the questions people
-// actually ask a notebook, and they are why this exists.
+// Most calculators stop at arithmetic. These are
+// the questions people actually ask a notebook,
+// and they are why this exists.
 
 # When does a recurring thing land
 
@@ -12,7 +13,8 @@ every Friday the 13th
 4th Thursday of November
 last weekday of every month
 
-// Click any answer above to see all the dates on a timeline.
+// Click any answer above to see all the dates on
+// a timeline.
 
 # Working days, not calendar days
 
@@ -25,8 +27,9 @@ what day of the week is January 24, 1984
 
 6pm Sydney in Chicago
 
-// When are two offices both at work? The answer is the overlap,
-// and it is drawn on one clock rather than two.
+// When are two offices both at work? The answer
+// is the overlap, and it is drawn on one clock
+// rather than two.
 9am to 5pm London and 9am to 5pm New York
 
 # Spans and shifts

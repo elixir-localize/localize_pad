@@ -3,7 +3,8 @@ Locale: `en`
 ```
 # Units
 
-// Around 2,760 units, from CLDR and from the GNU units database.
+// Around 2,760 units, from CLDR and from the GNU
+// units database.
 
 # Converting
 
@@ -17,8 +18,9 @@ Locale: `en`
 60 mph to km/h
 100 kg * 9.8 m/s^2
 
-// Juxtaposition binds tighter than an explicit divide, so this reads
-// as (kg × m) / s² — the same rule GNU units follows.
+// Juxtaposition binds tighter than an explicit
+// divide, so this reads as (kg × m) / s² — the
+// same rule GNU units follows.
 
 # Mixing units in one sum
 

@@ -33,10 +33,14 @@ defmodule LocalizePad.Temporal.Scanner do
 
   """
 
-  # Longest candidate window, in words. `Saturday, May 16, 2026` is four;
-  # `2nd quarter of 2026` is four. Six leaves room without making the scan
-  # quadratic in practice.
-  @maximum_window 6
+  # Longest candidate window, in words. The binding case is Spanish:
+  # `3 de julio de 2026` is five, where English `Saturday, May 16, 2026` is
+  # four. It was six, which cost a wasted failed parse per starting position
+  # for no locale's benefit — and a failed parse is the expensive one.
+  #
+  # Do not raise this without a date phrase that needs it. Every extra word is
+  # another parse attempt at every starting position in every line.
+  @maximum_window 5
 
   @clock_time ~r/\d\s*:\s*\d/u
   @day_period ~r/\d\s*(am|pm|a\.m\.|p\.m\.)\b/iu
@@ -70,6 +74,10 @@ defmodule LocalizePad.Temporal.Scanner do
   # a calendar that knows eras, and Calendrical refusing it is a cheaper and
   # more accurate answer than a regex of every era since 645 AD.
   @era_year ~r/\p{Han}+\s*\d+\s*年/u
+
+  # A digit, a quarter marker, or Han — the last because a CJK date may open
+  # with its era name.
+  @starts_date ~r/^(\p{Nd}|[qQ][1-4]\b|\p{Han})/u
 
   @type segment :: {:text, String.t()} | {:temporal, map(), String.t()}
 
@@ -135,11 +143,38 @@ defmodule LocalizePad.Temporal.Scanner do
   defp longest_match(text, words, locale) do
     available = min(@maximum_window, length(words))
 
+    if starts_temporal?(window_source(text, words, 1), locale) do
+      widest_match(text, words, locale, available)
+    else
+      :error
+    end
+  end
+
+  # A date may *contain* a month name without beginning with one, and the shape
+  # filter alone cannot tell the difference: in `what day of the week is
+  # January 24, 1984`, the windows starting at `what`, `day`, `of`, `the`, `is`
+  # all reach far enough to include `January` and all pass. Each then costs a
+  # failed parse, and a failed parse is twenty times more expensive than a
+  # successful one — Calendrical tries date, time, datetime and interval before
+  # giving up, and builds a report of all four.
+  #
+  # So a window must *start* with something that can start a date. That is a
+  # real rule and not only an optimisation: no date begins with `the`. It turns
+  # an O(words²) parse count into one cheap test per starting position, and cut
+  # this example sheet from six seconds to well under one.
+  defp starts_temporal?(source, locale) do
+    first = source |> String.trim_leading() |> String.split(~r/\s/u, parts: 2) |> hd()
+
+    Regex.match?(@starts_date, first) or names_a_month_or_weekday?(first, locale)
+  end
+
+  defp widest_match(text, words, locale, available) do
     available..1//-1
     |> Enum.find_value(:error, fn window ->
       source = window_source(text, words, window)
 
-      with true <- temporal_shape?(source, locale),
+      with false <- spans_an_operator?(source),
+           true <- temporal_shape?(source, locale),
            {:ok, fields} when is_map(fields) <- parse(source, locale) do
         {:ok, fields, source, window}
       else
@@ -184,6 +219,14 @@ defmodule LocalizePad.Temporal.Scanner do
       {:error, reason}
     end
   end
+
+  # `June 12, 2026 + 3 weeks` is a date and then some arithmetic, never one
+  # span, so the windows that reach across the `+` cannot be dates and need not
+  # be parsed to find that out. Spaces are required around the operator, which
+  # is what keeps `2026-06-15` and `12/02/1988` intact.
+  @operator_between ~r/\s[-+*\/×÷]\s/u
+
+  defp spans_an_operator?(source), do: Regex.match?(@operator_between, source)
 
   # A window is only worth offering to the parser if it looks like a date or a
   # time. See the moduledoc: this filter is what stops `2026 + 1` becoming a

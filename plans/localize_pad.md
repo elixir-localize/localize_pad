@@ -1052,6 +1052,37 @@ carry, and swapping the vocabulary alone will not make `20 ist 10% von was` work
 this limit; this is the feature that reaches it. Localizing these needs phrase rules per locale,
 which is a different and larger piece of work than adding words to a table.
 
+**The example pads were also the first real performance measurement.** Loading the temporal one
+took six seconds, warm — and since every keystroke re-evaluates the whole sheet, typing in it
+would have been worse than loading it. All of the cost was in `LocalizePad.Temporal.Scanner`,
+none in parsing or evaluation.
+
+The cause: a *failed* `Calendrical.parse/2` costs around 40ms where a successful one costs 2ms —
+it tries date, then time, then datetime, then interval, and builds a report of all four. The
+scanner was making dozens of failing calls per line.
+
+Three rules cut it to under 2 seconds, and each is a real statement about dates rather than only
+an optimisation:
+
+* **A window must *start* with something that can start a date** — a digit, a month or weekday
+  name, a quarter marker, Han. The shape filter only asked whether a window *contained* one, so
+  in `what day of the week is January 24, 1984` the windows beginning at `what`, `day`, `of` and
+  `the` all reached far enough to include `January` and all got parsed. No date begins with
+  `the`.
+
+* **A window that spans a standalone operator is not a date.** `June 12, 2026 + 3 weeks` is a
+  date and then some arithmetic. Requiring spaces around the operator is what keeps `2026-06-15`
+  and `12/02/1988` intact.
+
+* **The window cap dropped from six words to five.** Five is not arbitrary: `3 de julio de 2026`
+  is the longest legitimate date phrase across the supported locales, and the suite says so —
+  four broke Spanish. Every word above the true maximum is a wasted failed parse at every
+  starting position of every line.
+
+The remaining second is still failed parses, and the largest single lever now sits upstream: if
+a failed parse in Calendrical were as cheap as a successful one, this scanner would be roughly
+free.
+
 **Six example pads ship in `priv/examples`, and the documentation is the pad.** Each is a working
 sheet whose own comments explain it, which is the only form of documentation here that cannot
 rot unnoticed: the suite evaluates every line of every example and fails the build when a claim

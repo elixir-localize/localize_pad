@@ -3,9 +3,11 @@ Locale: `en`
 ```
 # A weekend away
 
-// This is a notepad. Type a line and the answer appears in the margin.
-// Words it does not recognise are ignored, so you can write the way you
-// would in a notebook rather than the way a calculator demands.
+// This is a notepad. Type a line and the answer
+// appears in the margin. Words it does not
+// recognise are ignored, so you can write the way
+// you would in a notebook rather than the way a
+// calculator demands.
 
 $240 for the hotel
 $89 for the flight out
@@ -15,10 +17,12 @@ sum
 
 # Splitting it
 
-// A line can name a value, and later lines can use that name.
+// A line can name a value, and later lines can
+// use that name.
 people = 2
 
-// Every line is numbered in the gutter, and @n is the answer on line n.
+// Every line is numbered in the gutter, and @n is
+// the answer on line n.
 @11 / people
 
 # What is left
@@ -26,7 +30,8 @@ people = 2
 budget = $600
 budget - @11
 
-// Try editing a number above. Everything that depended on it follows.
+// Try editing a number above. Everything that
+// depended on it follows.
 
 # Scaling it up
 
