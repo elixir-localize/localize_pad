@@ -53,10 +53,9 @@ config :tailwind,
   ]
 
 # Configure Elixir's Logger
-# `:domain` so that locale provisioning at boot is attributable in the log —
-# `LocalizePad.Locales.ensure_downloaded/0` tags its lines `[:localize]`, and
-# without the key here the tag is dropped and a failed download reads like an
-# unattributed error.
+# `:domain` so that Localize's own log lines stay attributable. It tags them
+# `[:localize]`, and a runtime locale download that fails logs there — without
+# the key the tag is dropped and the line reads as an unattributed error.
 config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",
   metadata: [:request_id, :domain]
@@ -83,7 +82,18 @@ config :phoenix, :json_library, Jason
 config :localize,
   otp_app: :localize_pad,
   default_locale: :en,
-  supported_locales: [:en, :"en-AU", :"en-GB", :de, :fr, :es, :ja]
+  supported_locales: [:en, :"en-AU", :"en-GB", :de, :fr, :es, :ja],
+  # The release ships no CLDR data, so a node fetches what it needs the first
+  # time it needs it. Lazy rather than at boot: only the locales actually read
+  # are downloaded, a transient CDN failure is retried on the next request
+  # rather than lasting the life of the node, and a locale gone stale against a
+  # newer Localize refreshes itself.
+  #
+  # The cost is that a failed download is not loud. Localize walks the parent
+  # chain and lands on `en`, which for `en-AU` means US conventions with
+  # nothing on screen to say so — see `LocalizePad.Locales` on why that
+  # particular fallback is the one to watch.
+  allow_runtime_locale_download: true
 
 # Currency conversion arrives in M4. Until then there is no exchange-rate
 # retriever in the supervision tree, so tell Money not to start one implicitly —

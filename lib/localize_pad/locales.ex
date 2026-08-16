@@ -26,13 +26,6 @@ defmodule LocalizePad.Locales do
 
   """
 
-  alias Localize.Locale.Provider
-  alias Localize.Locale.Provider.Cache
-
-  require Logger
-
-  @unavailable {__MODULE__, :unavailable}
-
   @typedoc """
   A resolved locale, as this application carries one.
 
@@ -56,11 +49,11 @@ defmodule LocalizePad.Locales do
   @doc """
   The locale tags offered as suggestions, each with its display name.
 
-  These are exactly the locales whose CLDR data was downloaded, because those
-  are the ones whose conventions have been checked. Anything else the reader
-  types still resolves — through CLDR's own inheritance, which is usually
-  right: `en-IE` inherits `en-GB` rather than `en`, so its dates come back in
-  the order Ireland writes them.
+  These are exactly the configured `:supported_locales`, because those are the
+  ones whose conventions have been checked. Anything else the reader types
+  still resolves — through CLDR's own inheritance, which is usually right:
+  `en-IE` inherits `en-GB` rather than `en`, so its dates come back in the
+  order Ireland writes them.
 
   ### Returns
 
@@ -77,62 +70,11 @@ defmodule LocalizePad.Locales do
   @spec suggestions() :: [{String.t(), String.t()}]
   def suggestions do
     for locale <- Localize.supported_locales(),
-        locale not in unavailable(),
         tag = to_string(locale),
         {:ok, name} <- [display_name(tag)] do
       {name, tag}
     end
   end
-
-  @doc """
-  Downloads any supported locale whose data is missing or stale.
-
-  Locale data is fetched rather than vendored, and a release does not carry
-  it — so a production node provisions its own cache at boot, before anything
-  reads a locale. `Localize` loads lazily into `:persistent_term` on first
-  access, which is what makes this safe to do at startup rather than at build
-  time.
-
-  A locale that cannot be fetched is recorded as unavailable rather than
-  taking the node down with it. The alternative failure is worse and quieter:
-  CLDR resolves a missing `en-AU` to `en` and answers in US conventions, so a
-  sheet would read `3/4/2026` as March 4 with nothing on screen to say why.
-  Recording it keeps that locale out of the picker and out of `resolve/1`.
-
-  ### Returns
-
-  * `:ok`.
-
-  """
-  @spec ensure_downloaded() :: :ok
-  def ensure_downloaded do
-    unavailable =
-      Localize.supported_locales()
-      |> Enum.reject(&fetched?/1)
-      |> MapSet.new()
-
-    Enum.each(unavailable, fn locale ->
-      Logger.error("Locale #{locale} is unavailable and will not be offered", domain: [:localize])
-    end)
-
-    :persistent_term.put(@unavailable, unavailable)
-  end
-
-  defp fetched?(locale) do
-    if Cache.stale?(locale), do: download(locale), else: true
-  end
-
-  defp download(locale) do
-    with {:ok, binary} <- Provider.download_locale(locale),
-         {:ok, _path} <- Cache.store(locale, binary) do
-      Logger.info("Downloaded locale #{locale}", domain: [:localize])
-      true
-    else
-      _not_downloaded -> false
-    end
-  end
-
-  defp unavailable, do: :persistent_term.get(@unavailable, MapSet.new())
 
   @doc """
   Resolves a locale to the language tag the sheet should carry.
@@ -183,8 +125,7 @@ defmodule LocalizePad.Locales do
         # file CLDR resolved to, and for a language never downloaded it is the
         # default — `it` resolves to `:en`, so testing it would accept Italian
         # and then read the sheet in English.
-        if language_tag.language in Localize.supported_locales() and
-             language_tag.cldr_locale_id not in unavailable() do
+        if language_tag.language in Localize.supported_locales() do
           {:ok, language_tag}
         else
           {:error, {:unsupported, to_string(language_tag.language)}}
