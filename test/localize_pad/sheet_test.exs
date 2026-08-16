@@ -151,15 +151,54 @@ defmodule LocalizePad.SheetTest do
       assert Sheet.total(Sheet.new("3 meters\n100 kg", locale: :en)) == nil
     end
 
-    test "and money in a second currency" do
-      # With no rate to hand, `$20` is not `€100`.
-      assert Sheet.total(Sheet.new("100 EUR\n20 USD", locale: :en)) == nil
+    test "and a mix of shapes, whichever two" do
+      assert Sheet.total(Sheet.new("19\n$3", locale: :en)) == nil
+      assert Sheet.total(Sheet.new("3 meters\n$3", locale: :en)) == nil
     end
 
     test "but compatible units still total, converted into the first" do
       total = Sheet.total(Sheet.new("1 meter\n50 cm", locale: :en))
 
       assert Localize.Unit.to_string!(total, locale: :en) == "1.5 meters"
+    end
+  end
+
+  describe "money totals" do
+    # `Money.sum/2` takes the rates, so a sheet's total can be checked against
+    # known ones rather than whatever the retriever last fetched.
+    @rates %{
+      EUR: Decimal.new(1),
+      USD: Decimal.new("1.1"),
+      AUD: Decimal.new("1.7"),
+      GBP: Decimal.new("0.85")
+    }
+
+    test "one currency needs no rate and stays in the currency written" do
+      total = Sheet.total(Sheet.new("$240\n$89\n$120", locale: :en), %{})
+
+      assert Money.equal?(total, Money.new(:USD, "449.00"))
+    end
+
+    test "several currencies are converted into the reader's own" do
+      # 100 EUR is 170 AUD and 11 USD is another 17.
+      sheet = Sheet.new("100 EUR\n11 USD", locale: "en-AU")
+
+      assert Money.equal?(Sheet.total(sheet, @rates), Money.new(:AUD, 187))
+    end
+
+    test "and the reader's own is what changes the answer, not the sheet" do
+      # The same two lines, read by someone else. `Money.sum/2` would report
+      # both in euros, the topmost line's currency, which is an accident of
+      # how the sheet was typed.
+      sheet = Sheet.new("100 EUR\n11 USD", locale: "en-GB")
+
+      assert Money.equal?(Sheet.total(sheet, @rates), Money.new(:GBP, "93.50"))
+    end
+
+    test "a currency with no rate has no total" do
+      sheet = Sheet.new("100 EUR\n20 USD", locale: "en-AU")
+
+      assert Sheet.total(sheet, %{}) == nil
     end
 
     test "a line built from another line refuses the total rather than counting it twice" do

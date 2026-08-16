@@ -22,26 +22,36 @@ defmodule LocalizePad.Sheet do
 
   ## Totals
 
-  `total/1` adds up the expression lines. Declarations are excluded — a
+  `total/2` adds up the expression lines. Declarations are excluded — a
   declaration names a value for later use, and counting `cost = 550` as an
   entry as well as every line that uses `cost` would double it.
 
-  Beyond that it is a total or it is nothing. A sheet has one only when its
-  answers are the same kind of thing and each stands on its own; where either
-  fails there is no number to show, and the footer shows none.
+  Three sheets have a total, and they are the three where one exists to be had:
 
-  Both rules replaced a tolerant version of themselves, and tolerance was the
-  wrong instinct in each. Skipping a value that would not add produced a total
-  in whatever unit the topmost line happened to use, having silently dropped
-  most of the page — reorder the sheet and both the unit and the number
-  changed. Counting a line that reuses another line's answer put that answer in
-  twice. Neither had a repair that was not a guess: dropping the referenced
-  line and dropping the line referencing it give different totals, both
-  arguable. So the sheet gets neither.
+  * every answer is a number, and they add.
 
-  A date or a set of dates is passed over rather than refused. Those were never
-  candidates for a total, so their presence does not stop the numbers on the
-  page from having one.
+  * every answer is a quantity of one category, so they convert into a common
+    unit and add. The result takes the first answer's unit — the sheet's own
+    way of writing this measure.
+
+  * every answer is money, and `Money.sum/2` converts them into one currency.
+    Where the sheet used several, the total is restated in the reader's own
+    currency, since which of the sheet's currencies to report in would
+    otherwise be settled by whichever line was typed first.
+
+  Anything else is a page of unlike things, and a page of unlike things has no
+  sum. A date or a set of dates is passed over rather than counted against the
+  sheet — those were never candidates, so a date beside a shopping list does
+  not stop the list having a total.
+
+  Both this and the rule about declarations replaced a tolerant version of
+  themselves, and tolerance was the wrong instinct in each. Adding what would
+  add and skipping the rest produced a total in whatever unit the topmost line
+  happened to use, having silently dropped most of the page — reorder the sheet
+  and both the unit and the number changed. Counting a line that reuses another
+  line's answer put that answer in twice, and had no repair that was not a
+  guess: dropping the referenced line and dropping the line referencing it give
+  different totals, both arguable. So the sheet gets neither.
 
   """
 
@@ -132,7 +142,7 @@ defmodule LocalizePad.Sheet do
       |> Enum.take_while(&(&1.kind not in [:subtotal, :heading]))
       |> Enum.reverse()
 
-    value = sum_of(covered)
+    value = sum_of(covered, state.locale, latest_rates())
 
     # A subtotal depends on every line it reaches back over, so editing any of
     # them marks the subtotal for re-render. Without this the graph would say a
@@ -181,6 +191,10 @@ defmodule LocalizePad.Sheet do
 
   * `sheet` - an evaluated sheet.
 
+  * `rates` - the exchange rates used to total a sheet written in more than one
+    currency, in the form `Money.sum/2` takes. Defaults to the latest retrieved
+    rates.
+
   ### Returns
 
   * The total as a value.
@@ -195,10 +209,18 @@ defmodule LocalizePad.Sheet do
       iex> LocalizePad.Sheet.total(sheet)
       42
 
+      iex> sheet = LocalizePad.Sheet.new("100 EUR\\n11 USD", locale: "en-AU")
+      iex> rates = %{EUR: Decimal.new(1), USD: Decimal.new("1.1"), AUD: Decimal.new("1.7")}
+      iex> Money.equal?(LocalizePad.Sheet.total(sheet, rates), Money.new(:AUD, 187))
+      true
+
   """
-  @spec total(t()) :: Evaluator.value() | nil
-  def total(%__MODULE__{lines: lines}) do
-    sum_of(lines)
+  @spec total(t(), Money.ExchangeRates.t() | {:ok, Money.ExchangeRates.t()} | {:error, term()}) ::
+          Evaluator.value() | nil
+  def total(sheet, rates \\ latest_rates())
+
+  def total(%__MODULE__{lines: lines, locale: locale}, rates) do
+    sum_of(lines, locale, rates)
   end
 
   @doc """
@@ -516,25 +538,101 @@ defmodule LocalizePad.Sheet do
 
   # ── Summing ─────────────────────────────────────────────────────────────
 
-  # Only expression lines count, and only when the sheet has a total at all —
-  # see `independent?/2` and the `accumulate/2` catch-all for the two ways it
-  # can fail to.
-  defp sum_of(lines) do
+  # A sheet has a total when its answers are one kind of thing, each standing
+  # on its own. `independent?/2` decides the second; `add_up/2` the first.
+  defp sum_of(lines, locale, rates) do
     counted = Enum.filter(lines, &(&1.kind == :expression and not is_nil(&1.value)))
 
     if independent?(counted, transitive_dependencies(lines)) do
-      add_up(counted)
+      counted |> Enum.map(& &1.value) |> add_up(locale, rates)
     end
   end
 
-  defp add_up(counted) do
-    Enum.reduce_while(counted, nil, fn line, total ->
-      case accumulate(total, line.value) do
-        :incompatible -> {:halt, nil}
-        next -> {:cont, next}
+  # Three shapes have a total: numbers, quantities of one kind, and money.
+  # Anything else is a page of unlike things, and a page of unlike things has
+  # no sum — not a partial one taken over whichever answers happened to agree
+  # with the topmost line.
+  #
+  # Values that were never candidates are passed over rather than counted
+  # against the sheet. A date beside a shopping list does not stop the list
+  # having a total; it simply is not part of one.
+  defp add_up(values, locale, rates) do
+    case Enum.filter(values, &summable?/1) do
+      [] -> nil
+      summable -> add_together(summable, locale, rates)
+    end
+  end
+
+  defp add_together(values, locale, rates) do
+    cond do
+      Enum.all?(values, &is_number/1) -> Enum.sum(values)
+      Enum.all?(values, &match?(%Unit{}, &1)) -> add_units(values)
+      Enum.all?(values, &match?(%Money{}, &1)) -> add_money(values, locale, rates)
+      true -> nil
+    end
+  end
+
+  # Same category or no total. `Unit.Math.add/2` is the authority on that, and
+  # it converts as it goes, so metres and centimetres come out as one length
+  # and metres and kilograms come out as nothing.
+  #
+  # The result takes the first answer's unit, which is the sheet's own choice
+  # of how to write this measure rather than one made for it.
+  defp add_units([first | rest]) do
+    Enum.reduce_while(rest, first, fn unit, total ->
+      case Unit.Math.add(total, unit) do
+        {:ok, sum} -> {:cont, sum}
+        {:error, _reason} -> {:halt, nil}
       end
     end)
   end
+
+  # No rates is an empty map rather than an error, because `Money.sum/2` refuses
+  # outright when handed `{:error, _}` — including for a list in one currency,
+  # which needs no rate at all. A sheet of dollars still totals on a machine
+  # that has never fetched a rate; only a sheet of dollars *and* euros cannot.
+  defp latest_rates do
+    case Money.ExchangeRates.latest_rates() do
+      {:ok, rates} -> rates
+      {:error, _reason} -> %{}
+    end
+  end
+
+  # `Money.sum/2` converts each amount into the first one's currency, using the
+  # rates already cached for `EUR 200 in AUD`. With no rate for a currency on
+  # the page it returns an error, and an error is the honest total.
+  defp add_money(values, locale, rates) do
+    case Money.sum(values, rates) do
+      {:ok, sum} -> in_readers_currency(sum, values, locale, rates)
+      {:error, _reason} -> nil
+    end
+  end
+
+  # Where a sheet used one currency throughout, that is what it is about and
+  # the sum is already in it — converting a page of euros into pounds would be
+  # answering a question nobody asked, and would need a rate to do it.
+  #
+  # Where a sheet mixed them, `Money.sum/2` reports in whichever currency the
+  # topmost line happened to use, and that is an accident of line order. The
+  # reader's own currency is the one non-arbitrary answer.
+  defp in_readers_currency(sum, values, locale, rates) do
+    if values |> Enum.uniq_by(& &1.currency) |> length() == 1 do
+      sum
+    else
+      convert(sum, Localize.Currency.currency_from_locale(locale), rates)
+    end
+  end
+
+  # A total that cannot be restated in the reader's currency is still a correct
+  # total, so it is reported as it stands rather than withheld.
+  defp convert(sum, {:ok, currency}, rates) do
+    case Money.to_currency(sum, currency, rates) do
+      {:ok, converted} -> converted
+      {:error, _reason} -> sum
+    end
+  end
+
+  defp convert(sum, _no_currency, _rates), do: sum
 
   # A total adds up answers that stand on their own, and `@3 + 100` does not:
   # line 3's answer is already inside it, so adding both puts that answer into
@@ -574,50 +672,6 @@ defmodule LocalizePad.Sheet do
 
       Map.put(reaches, line.index, inherited)
     end)
-  end
-
-  # Only a value that could sensibly be added to others may seed the total. A
-  # date cannot: adding up the dates in a sheet is meaningless, and letting one
-  # seed the accumulator made the total read as whatever date appeared first
-  # while every real number below it was silently skipped.
-  defp accumulate(nil, value) do
-    if summable?(value), do: value
-  end
-
-  defp accumulate(total, value) when is_number(total) and is_number(value) do
-    total + value
-  end
-
-  defp accumulate(%Unit{} = total, %Unit{} = value) do
-    case Unit.Math.add(total, value) do
-      {:ok, sum} -> sum
-      {:error, _reason} -> :incompatible
-    end
-  end
-
-  defp accumulate(%Money{} = total, %Money{} = value) do
-    case Money.add(total, value) do
-      {:ok, sum} -> sum
-      {:error, _reason} -> :incompatible
-    end
-  end
-
-  # A quantity that will not combine with the running total is not a line to
-  # skip — it is proof that the sheet is not one thing, and there is no total
-  # of it to show.
-  #
-  # Skipping used to look like the tolerant choice and was the opposite. On a
-  # page of lengths, masses and temperatures the total read as a distance, in
-  # whatever unit the topmost line happened to use, having quietly discarded
-  # two thirds of the answers under a label that said `Total`. Reordering the
-  # sheet changed both the unit and the number. A reader had no way to see any
-  # of that, which is what makes it worse than an empty footer.
-  #
-  # Values that were never candidates — a date, a set of dates — are still
-  # passed over. They are not a competing total, so their presence does not
-  # stop the numbers on the page from having one.
-  defp accumulate(total, value) do
-    if summable?(value), do: :incompatible, else: total
   end
 
   defp summable?(value), do: Value.kind(value) in [:number, :quantity, :money]
