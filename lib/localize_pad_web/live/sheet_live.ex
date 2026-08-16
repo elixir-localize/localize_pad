@@ -921,21 +921,34 @@ defmodule LocalizePadWeb.SheetLive do
         // than ⌘ because macOS takes ⌘H before the browser sees it.
         // TEMPORARY, for a demo — delete with its server-side half.
         //
-        // Matched on `code` before `key`. Safari hands Ctrl+letter to the macOS
-        // text bindings and reports `key` as the control character it produces
-        // rather than the letter, so a `key`-only match works in Chrome and
-        // silently does nothing in Safari. `code` is the physical key and is
-        // the same in both.
+        // Four bindings for two toggles, because macOS claims the mnemonic
+        // ones. Ctrl-H is delete-backward and Ctrl-U is delete-to-line-start
+        // in every macOS text field, and Safari honours both before the DOM
+        // sees the key — the event never arrives, so no amount of matching in
+        // here helps. Chrome passes them through, which is why the mnemonic
+        // pair worked there and looked correct.
         //
-        // Shift is accepted as well as ignored: macOS claims Ctrl-H and Ctrl-U
-        // for delete-backward and delete-to-line-start, and claims no
-        // Ctrl-Shift-letter at all, so Ctrl-Shift-U is the combination to reach
-        // for if a browser swallows the plain one.
+        // Ctrl-1 and Ctrl-2 are bound to nothing by macOS and are the pair to
+        // use in front of an audience. Ctrl-H and Ctrl-U stay because they read
+        // better and work in Chrome.
         //
-        // Capture phase, so nothing downstream can stop it first.
+        // Matched on `code` before `key`: `code` is the physical key and is
+        // reported the same everywhere, where `key` under Ctrl varies. Capture
+        // phase, so nothing downstream can stop it first.
         presentationShortcut() {
-          const by_code = {KeyH: "toggle_locale_control", KeyU: "toggle_authored"}
-          const by_key = {h: "toggle_locale_control", u: "toggle_authored"}
+          const by_code = {
+            KeyH: "toggle_locale_control",
+            Digit1: "toggle_locale_control",
+            KeyU: "toggle_authored",
+            Digit2: "toggle_authored"
+          }
+
+          const by_key = {
+            h: "toggle_locale_control",
+            1: "toggle_locale_control",
+            u: "toggle_authored",
+            2: "toggle_authored"
+          }
 
           this.onPresentationKey = (event) => {
             if (!event.ctrlKey || event.metaKey || event.altKey) return
