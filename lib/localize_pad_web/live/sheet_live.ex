@@ -183,6 +183,7 @@ defmodule LocalizePadWeb.SheetLive do
      |> assign(:locale_error, nil)
      |> assign(:prefer_local, false)
      |> assign(:show_locale, true)
+     |> assign(:show_authored, false)
      |> assign(:examples, Examples.all())
      |> assign(:selected, nil)
      |> recalculate()}
@@ -295,6 +296,13 @@ defmodule LocalizePadWeb.SheetLive do
     {:noreply, assign(socket, :show_locale, not socket.assigns.show_locale)}
   end
 
+  # TEMPORARY, for a demo. Delete this, its assign, `token_class/1`, the
+  # `mark_authored` option in `LocalizePad.Highlight` and `Lexicon.authored/1`.
+  def handle_event("toggle_authored", _params, socket) do
+    {:noreply,
+     socket |> assign(:show_authored, not socket.assigns.show_authored) |> recalculate()}
+  end
+
   # A reading preference rather than an edit, so it is neither broadcast to the
   # other windows nor written into the shared link: it changes how this screen
   # renders the sheet, not what the sheet says.
@@ -384,7 +392,13 @@ defmodule LocalizePadWeb.SheetLive do
 
     socket
     |> assign(:sheet, sheet)
-    |> assign(:highlighted, Highlight.lines(socket.assigns.source, locale: socket.assigns.locale))
+    |> assign(
+      :highlighted,
+      Highlight.lines(socket.assigns.source,
+        locale: socket.assigns.locale,
+        mark_authored: socket.assigns.show_authored
+      )
+    )
     |> assign(:share_payload, Share.encode(socket.assigns.source, socket.assigns.locale))
     |> assign(:total, format_total(sheet, socket.assigns.locale))
     |> assign(:detail, detail_for(sheet, socket.assigns[:selected], socket.assigns.locale))
@@ -440,6 +454,15 @@ defmodule LocalizePadWeb.SheetLive do
   defp tick_alignment(at) when at < 0.05, do: "translate-x-0"
   defp tick_alignment(at) when at > 0.95, do: "-translate-x-full"
   defp tick_alignment(_at), do: "-translate-x-1/2"
+
+  # TEMPORARY, for a demo — the list form is what `mark_authored` produces.
+  defp token_class(nil), do: nil
+
+  defp token_class(classes) when is_list(classes) do
+    classes |> Enum.reject(&is_nil/1) |> Enum.map_join(" ", &"tok-#{&1}")
+  end
+
+  defp token_class(class), do: "tok-#{class}"
 
   defp format_total(sheet, locale) do
     case Sheet.total(sheet) do
@@ -608,7 +631,7 @@ defmodule LocalizePadWeb.SheetLive do
                 :for={segments <- @highlighted}
               ><span
                   :for={{class, text} <- segments}
-                  class={class && "tok-#{class}"}
+                  class={token_class(class)}
                 >{text}</span>{"\n"}</code></pre>
 
               <textarea
@@ -897,18 +920,22 @@ defmodule LocalizePadWeb.SheetLive do
         // TEMPORARY, for a demo — delete with its server-side half. Ctrl rather
         // than ⌘ because macOS takes ⌘H before the browser sees it.
         presentationShortcut() {
-          this.onCtrlH = (event) => {
-            if (event.ctrlKey && !event.metaKey && !event.altKey && event.key === "h") {
+          this.onPresentationKey = (event) => {
+            if (!event.ctrlKey || event.metaKey || event.altKey) return
+
+            const event_name = {h: "toggle_locale_control", u: "toggle_authored"}[event.key]
+
+            if (event_name) {
               event.preventDefault()
-              this.pushEvent("toggle_locale_control", {})
+              this.pushEvent(event_name, {})
             }
           }
 
-          document.addEventListener("keydown", this.onCtrlH)
+          document.addEventListener("keydown", this.onPresentationKey)
         },
 
         destroyed() {
-          document.removeEventListener("keydown", this.onCtrlH)
+          document.removeEventListener("keydown", this.onPresentationKey)
         },
 
         shortcuts(textarea) {

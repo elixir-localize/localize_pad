@@ -241,6 +241,13 @@
   display: none;
 }
 
+/* TEMPORARY, for a demo: the words this application had to be told, as
+   against the thousands it reads from CLDR. */
+.tok-authored {
+  text-decoration: underline wavy var(--color-warning);
+  text-underline-offset: 4px;
+}
+
 .tok-number,
 .tok-ordinal,
 .tok-percentage,

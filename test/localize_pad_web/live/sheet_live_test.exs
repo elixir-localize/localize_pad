@@ -540,4 +540,40 @@ defmodule LocalizePadWeb.SheetLiveTest do
       assert render_click(live, :toggle_locale_control, %{}) =~ "Sheet locale, as a language tag"
     end
   end
+
+  # TEMPORARY, for a demo. Delete with the feature.
+  describe "marking the authored words" do
+    test "underlines what was written down and nothing CLDR supplies", %{conn: conn} do
+      {:ok, live, html} = live(conn, ~p"/")
+
+      refute html =~ "tok-authored"
+
+      render_change(live, :edit, %{"source" => "every Friday in Tokyo"})
+      marked = render_click(live, :toggle_authored, %{})
+
+      # `every` and `in` are ours; the weekday and the city are CLDR's.
+      assert marked =~ ~s(class="tok-word tok-authored">every</span>)
+      assert marked =~ ~s(class="tok-keyword tok-authored">in</span>)
+      refute marked =~ ~s(Friday</span>) and marked =~ ~s(tok-authored">Friday)
+      refute marked =~ ~s(tok-authored">Tokyo)
+    end
+
+    test "and leaves a variable alone whatever it is named", %{conn: conn} do
+      {:ok, live, _html} = live(conn, ~p"/")
+
+      render_change(live, :edit, %{"source" => "every = 3\nevery + 1"})
+      marked = render_click(live, :toggle_authored, %{})
+
+      assert marked =~ ~s(class="tok-variable">every</span>)
+    end
+
+    test "and goes away again", %{conn: conn} do
+      {:ok, live, _html} = live(conn, ~p"/")
+
+      render_change(live, :edit, %{"source" => "3 meters to feet"})
+      render_click(live, :toggle_authored, %{})
+
+      refute render_click(live, :toggle_authored, %{}) =~ "tok-authored"
+    end
+  end
 end

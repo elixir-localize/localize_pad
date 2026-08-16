@@ -40,9 +40,9 @@ defmodule LocalizePad.Highlight do
 
   """
 
-  alias LocalizePad.{Line, Token, Tokenizer}
+  alias LocalizePad.{Lexicon, Line, Token, Tokenizer}
 
-  @type segment :: {atom() | nil, String.t()}
+  @type segment :: {atom() | [atom()] | nil, String.t()}
 
   @trailing_comment ~r{//.*$}u
 
@@ -63,6 +63,11 @@ defmodule LocalizePad.Highlight do
   * `:variables` - the names bound above this line. A word matching one is
     coloured as a variable, which is the only way to see at a glance that a
     name was recognised rather than skipped as prose. Defaults to `[]`.
+
+  * `:mark_authored` - also report which segments are words this application
+    had to be told, as against read from CLDR. Those come back with a class of
+    `[kind, :authored]` in place of `kind`. TEMPORARY, for a demo. Defaults to
+    `false`.
 
   ### Returns
 
@@ -88,6 +93,39 @@ defmodule LocalizePad.Highlight do
     |> Line.classify(source, locale)
     |> segments(source, locale, variables)
     |> Enum.reject(fn {_class, text} -> text == "" end)
+    |> mark_authored(locale, Keyword.get(options, :mark_authored, false))
+  end
+
+  # TEMPORARY, for a demo. Delete with the toggle in `LocalizePadWeb.SheetLive`.
+  #
+  # A variable is skipped whatever it is named: `every = 3` makes `every` this
+  # sheet's word rather than ours, and the highlighter has already worked out
+  # which it is. Prose needs no such rule — a word nobody wrote down is not in
+  # the set, so `Friday`, `Tokio` and `Australian dollars` stay unmarked while
+  # `every` and `weekday` are marked, which is the whole distinction.
+  defp mark_authored(segments, _locale, false), do: segments
+
+  defp mark_authored(segments, locale, true) do
+    authored = Lexicon.authored(locale)
+
+    Enum.map(segments, fn
+      {:variable, text} ->
+        {:variable, text}
+
+      {class, text} ->
+        if authored?(text, authored), do: {[class, :authored], text}, else: {class, text}
+    end)
+  end
+
+  # A phrase counts when every word in it does. `preferred weight` arrives as
+  # one segment and is two authored words; `Australian dollars` is one segment
+  # and neither word is ours.
+  defp authored?(text, authored) do
+    case text |> String.downcase() |> String.split(~r/\s+/, trim: true) do
+      [] -> false
+      [word] -> MapSet.member?(authored, word)
+      words -> Enum.all?(words, &MapSet.member?(authored, &1))
+    end
   end
 
   @doc """

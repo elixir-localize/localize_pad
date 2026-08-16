@@ -465,6 +465,57 @@ defmodule LocalizePad.Lexicon do
   end
 
   @doc """
+  Every surface form this locale had to be told, rather than read from CLDR.
+
+  TEMPORARY, for a demo — see the toggle in `LocalizePadWeb.SheetLive`.
+
+  The five authored tables and nothing else: the operator lexicon, the
+  recurrence words a rule set cannot spell, preference targets, usages and the
+  totalling words. It deliberately excludes everything `build_recurrence/1` and
+  `build_deictics/1` derive, so `heute` and `zweiter` do not appear while
+  `jeden` and `letzte` do — which is the distinction being shown.
+
+  ### Arguments
+
+  * `locale` - the locale whose authored vocabulary is wanted.
+
+  ### Returns
+
+  * A `MapSet` of lowercased forms.
+
+  ### Examples
+
+      iex> authored = LocalizePad.Lexicon.authored(:en)
+      iex> MapSet.member?(authored, "every")
+      true
+
+      iex> authored = LocalizePad.Lexicon.authored(:en)
+      iex> MapSet.member?(authored, "friday")
+      false
+
+  """
+  @spec authored(Locales.locale()) :: MapSet.t(String.t())
+  def authored(locale \\ :en) do
+    language = language(locale)
+    recurrence = Map.get(@recurrence, language, @recurrence.en)
+
+    [
+      @lexicons |> Map.get(language, @lexicons.en) |> Map.values() |> List.flatten(),
+      recurrence.every,
+      recurrence.weekday,
+      recurrence.what,
+      List.flatten(recurrence.day_of_week),
+      Map.keys(recurrence.ordinals),
+      Map.get(@subtotals, language, @subtotals.en),
+      Map.get(@preferences, language, @preferences.en),
+      @usages |> Map.get(language, @usages.en) |> Map.keys()
+    ]
+    |> List.flatten()
+    |> Enum.map(&String.downcase/1)
+    |> MapSet.new()
+  end
+
+  @doc """
   Returns the deictic table for a locale.
 
   Used by the tokenizer to build a segmentation vocabulary for scripts written
