@@ -29,13 +29,20 @@ defmodule LocalizePad.ExamplesTest do
 
         failures =
           sheet.lines
-          |> Enum.filter(& &1.error)
+          |> Enum.filter(&(&1.error && not environmental?(&1.error)))
           |> Enum.map(&"  line #{&1.index + 1}: #{&1.source} → #{inspect(&1.error)}")
 
         assert failures == [],
                "#{example.id} has lines that no longer work:\n" <> Enum.join(failures, "\n")
       end
     end
+
+    # A currency conversion is a well-formed line that cannot answer without
+    # exchange rates, and the suite configures no app id — deliberately, since
+    # a test that reaches the network is a test that fails when the network
+    # does. Only this one reason is tolerated: anything else is a broken line.
+    defp environmental?({:no_exchange_rate, _from, _to}), do: true
+    defp environmental?(_reason), do: false
 
     test "every example actually computes something" do
       # A pad of nothing but prose would pass the test above and demonstrate

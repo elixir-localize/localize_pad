@@ -59,4 +59,24 @@ interest on $10,000 over 6 years at 6%
 $99 per week
 $99 per week to months
 $30/day is what per year
+
+# Converting currency
+
+// Rates are fetched once a day and cached, so a
+// sheet full of conversions costs one request
+// between updates. Where no rates are configured
+// these lines say they have none rather than
+// inventing a number.
+200 EUR in AUD
+
+// The name works as well as the code — in your
+// own language, singular or plural.
+200 EUR in Australian dollars
+
+// Or ask for your own currency without naming it.
+// The territory in your locale decides which that
+// is, the same way it decides miles or kilometres.
+// Switch the locale above to en-AU and watch this
+// line change.
+200 EUR in preferred currency
 ```
