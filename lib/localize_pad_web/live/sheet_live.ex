@@ -439,8 +439,11 @@ defmodule LocalizePadWeb.SheetLive do
   def render(assigns) do
     ~H"""
     <div class="mx-auto flex h-screen max-w-5xl flex-col px-4 py-6">
-      <header class="mb-4 flex items-baseline justify-between gap-4">
-        <h1 class="text-lg font-semibold tracking-tight">LocalizePad</h1>
+      <header class="mb-4 flex items-center justify-between gap-4">
+        <h1 class="flex items-center gap-2 text-lg font-semibold tracking-tight">
+          <img src={~p"/images/logo.png"} alt="" width="24" height="24" class="shrink-0" />
+          LocalizePad
+        </h1>
 
         <div class="flex items-center gap-3">
           <%!-- No `phx-click`. Copying to the clipboard requires transient

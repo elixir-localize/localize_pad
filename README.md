@@ -1,3 +1,5 @@
+<img src="logo.png" alt="Localize" width="96" align="right" />
+
 # LocalizePad
 
 A notepad calculator — type a problem the way you'd write it on paper, get the answer in the margin — built on the Localize stack and deployed as a Phoenix/LiveView app.
