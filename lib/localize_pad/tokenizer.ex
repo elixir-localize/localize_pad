@@ -146,7 +146,17 @@ defmodule LocalizePad.Tokenizer do
   end
 
   defp tokenize_text(text, locale, offset) do
-    case Localize.Number.Parser.scan(text, locale: locale) do
+    # `lenient: false`, and the default is `true`. Lenient follows TR35, which
+    # says to ignore every [:Zs:] character — correct when the caller has
+    # asserted the whole string is a number, and wrong here, where a line is
+    # prose until proven otherwise. `articles 19 22 et 23` reads as `1922`
+    # under lenient and as two article numbers under this.
+    #
+    # Strict is not less capable: it accepts a space as a group separator
+    # wherever the digits form a legal group for the locale, so `1 234,5`,
+    # `12 345` and `1 234 567` all read as one number in French. It declines
+    # only the shapes that were never a grouping.
+    case Localize.Number.Parser.scan(text, locale: locale, lenient: false) do
       elements when is_list(elements) ->
         elements
         |> element_spans(text)

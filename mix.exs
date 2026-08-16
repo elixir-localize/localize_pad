@@ -76,7 +76,7 @@ defmodule LocalizePad.MixProject do
       # formatting and locale-aware number parsing; Calendrical parses dates,
       # times and intervals against CLDR patterns; Tempo is the temporal value
       # type; Unity is the unit engine; Money is currency and finance.
-      {:localize, "~> 1.1"},
+      {:localize, "~> 1.2"},
       {:localize_web, "~> 1.1"},
       {:calendrical, "~> 1.2"},
       {:ex_tempo, "~> 1.2"},
