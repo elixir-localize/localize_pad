@@ -137,9 +137,58 @@ defmodule LocalizePad.SheetTest do
       assert answers("10\n20\nsum\n5\nsum") == ["10", "20", "30", "5", "5"]
     end
 
-    test "values that cannot be added are skipped rather than poisoning the total" do
-      # A sheet mixing money-ish numbers and distances still totals its numbers.
-      assert Sheet.total(Sheet.new("19\n3 meters\n22", locale: :en)) == 41
+    test "a quantity that will not add refuses the total rather than being skipped" do
+      # Skipping it would answer `41` for a sheet whose middle line is a
+      # distance, under a label reading `Total`. There is no total of a number
+      # and a distance, so there is no answer.
+      assert Sheet.total(Sheet.new("19\n3 meters\n22", locale: :en)) == nil
+    end
+
+    test "and so does a quantity of the wrong kind" do
+      # Both are quantities and neither can be added to the other. The old
+      # behaviour kept whichever came first and reported it as the total of
+      # the page, in that line's own unit.
+      assert Sheet.total(Sheet.new("3 meters\n100 kg", locale: :en)) == nil
+    end
+
+    test "and money in a second currency" do
+      # With no rate to hand, `$20` is not `€100`.
+      assert Sheet.total(Sheet.new("100 EUR\n20 USD", locale: :en)) == nil
+    end
+
+    test "but compatible units still total, converted into the first" do
+      total = Sheet.total(Sheet.new("1 meter\n50 cm", locale: :en))
+
+      assert Localize.Unit.to_string!(total, locale: :en) == "1.5 meters"
+    end
+
+    test "a line built from another line refuses the total rather than counting it twice" do
+      # `@1 + 100` already contains the 41. Adding both reports 182 for a sheet
+      # whose independent answers come to 141 — or to 41, depending on which
+      # line you consider the real one, which is the reason there is no answer.
+      assert Sheet.total(Sheet.new("19 + 22\n@1 + 100", locale: :en)) == nil
+    end
+
+    test "and it follows the chain, not just the single step" do
+      # The declaration in the middle is not counted, so only the transitive
+      # closure shows that line 1's answer is inside line 3.
+      assert Sheet.total(Sheet.new("19 + 22\ntotal = @1\ntotal + 5", locale: :en)) == nil
+    end
+
+    test "but a declaration is not double counted, because it is never counted" do
+      # `hotel` is an input to line 2 and has no answer of its own in the
+      # total, so reusing it costs nothing.
+      assert Sheet.total(Sheet.new("hotel = 120\nhotel * 3\n50", locale: :en)) == 410
+    end
+
+    test "and neither is a subtotal" do
+      assert Sheet.total(Sheet.new("10\n20\nsum", locale: :en)) == 30
+    end
+
+    test "and a value that was never a candidate is passed over" do
+      # A date is not a competing total. Its presence on the page does not stop
+      # the numbers from having one.
+      assert Sheet.total(Sheet.new("19\nApril 12, 2026\n22", locale: :en)) == 41
     end
   end
 

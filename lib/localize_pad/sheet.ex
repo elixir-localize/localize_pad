@@ -26,8 +26,22 @@ defmodule LocalizePad.Sheet do
   declaration names a value for later use, and counting `cost = 550` as an
   entry as well as every line that uses `cost` would double it.
 
-  Values that cannot be added to the running total are skipped rather than
-  poisoning it. A sheet mixing dollars and kilometres still totals its dollars.
+  Beyond that it is a total or it is nothing. A sheet has one only when its
+  answers are the same kind of thing and each stands on its own; where either
+  fails there is no number to show, and the footer shows none.
+
+  Both rules replaced a tolerant version of themselves, and tolerance was the
+  wrong instinct in each. Skipping a value that would not add produced a total
+  in whatever unit the topmost line happened to use, having silently dropped
+  most of the page — reorder the sheet and both the unit and the number
+  changed. Counting a line that reuses another line's answer put that answer in
+  twice. Neither had a repair that was not a guess: dropping the referenced
+  line and dropping the line referencing it give different totals, both
+  arguable. So the sheet gets neither.
+
+  A date or a set of dates is passed over rather than refused. Those were never
+  candidates for a total, so their presence does not stop the numbers on the
+  page from having one.
 
   """
 
@@ -169,7 +183,11 @@ defmodule LocalizePad.Sheet do
 
   ### Returns
 
-  * The total as a value, or `nil` when nothing in the sheet can be added up.
+  * The total as a value.
+
+  * `nil` when the sheet has no total: nothing in it can be added up, its
+    answers are of kinds that will not combine, or one line's answer is already
+    inside another's and counting both would double it.
 
   ### Examples
 
@@ -498,13 +516,64 @@ defmodule LocalizePad.Sheet do
 
   # ── Summing ─────────────────────────────────────────────────────────────
 
-  # Only expression lines count. Values that will not add to the running total
-  # are skipped, so a sheet mixing currencies and distances still totals what
-  # it can.
+  # Only expression lines count, and only when the sheet has a total at all —
+  # see `independent?/2` and the `accumulate/2` catch-all for the two ways it
+  # can fail to.
   defp sum_of(lines) do
-    lines
-    |> Enum.filter(&(&1.kind == :expression and not is_nil(&1.value)))
-    |> Enum.reduce(nil, fn line, total -> accumulate(total, line.value) end)
+    counted = Enum.filter(lines, &(&1.kind == :expression and not is_nil(&1.value)))
+
+    if independent?(counted, transitive_dependencies(lines)) do
+      add_up(counted)
+    end
+  end
+
+  defp add_up(counted) do
+    Enum.reduce_while(counted, nil, fn line, total ->
+      case accumulate(total, line.value) do
+        :incompatible -> {:halt, nil}
+        next -> {:cont, next}
+      end
+    end)
+  end
+
+  # A total adds up answers that stand on their own, and `@3 + 100` does not:
+  # line 3's answer is already inside it, so adding both puts that answer into
+  # the total twice. The sample sheet read `542` where its independent answers
+  # come to `401`, and nothing on screen said which lines had been counted.
+  #
+  # There is no repair for it that is not a guess. Dropping the referenced line
+  # and dropping the line that references it give different totals, both
+  # defensible, so the sheet gets neither.
+  #
+  # Variables count as references. `hotel * 3` reuses line 4's answer exactly
+  # as `@4 * 3` does; the graph records both as edges and the double count is
+  # identical either way.
+  defp independent?(counted, reaches) do
+    indexes = MapSet.new(counted, & &1.index)
+
+    Enum.all?(counted, fn line ->
+      reaches
+      |> Map.get(line.index, MapSet.new())
+      |> MapSet.disjoint?(indexes)
+    end)
+  end
+
+  # Every line each line reaches back to, following the chain rather than the
+  # single step. A declaration in the middle would otherwise hide the edge:
+  # `total = @1` then `total + 5` depends directly on a line that is not itself
+  # counted, and only the closure shows that line 1's answer is in there.
+  #
+  # One pass suffices because a line can only reference lines above it, so by
+  # the time it is reached its dependencies are already resolved.
+  defp transitive_dependencies(lines) do
+    Enum.reduce(lines, %{}, fn line, reaches ->
+      inherited =
+        Enum.reduce(line.depends_on, line.depends_on, fn index, accumulated ->
+          MapSet.union(accumulated, Map.get(reaches, index, MapSet.new()))
+        end)
+
+      Map.put(reaches, line.index, inherited)
+    end)
   end
 
   # Only a value that could sensibly be added to others may seed the total. A
@@ -522,20 +591,34 @@ defmodule LocalizePad.Sheet do
   defp accumulate(%Unit{} = total, %Unit{} = value) do
     case Unit.Math.add(total, value) do
       {:ok, sum} -> sum
-      {:error, _reason} -> total
+      {:error, _reason} -> :incompatible
     end
   end
 
   defp accumulate(%Money{} = total, %Money{} = value) do
     case Money.add(total, value) do
       {:ok, sum} -> sum
-      # Two different currencies cannot be added without a rate, so the second
-      # is skipped rather than the total being abandoned.
-      {:error, _reason} -> total
+      {:error, _reason} -> :incompatible
     end
   end
 
-  defp accumulate(total, _value), do: total
+  # A quantity that will not combine with the running total is not a line to
+  # skip — it is proof that the sheet is not one thing, and there is no total
+  # of it to show.
+  #
+  # Skipping used to look like the tolerant choice and was the opposite. On a
+  # page of lengths, masses and temperatures the total read as a distance, in
+  # whatever unit the topmost line happened to use, having quietly discarded
+  # two thirds of the answers under a label that said `Total`. Reordering the
+  # sheet changed both the unit and the number. A reader had no way to see any
+  # of that, which is what makes it worse than an empty footer.
+  #
+  # Values that were never candidates — a date, a set of dates — are still
+  # passed over. They are not a competing total, so their presence does not
+  # stop the numbers on the page from having one.
+  defp accumulate(total, value) do
+    if summable?(value), do: :incompatible, else: total
+  end
 
   defp summable?(value), do: Value.kind(value) in [:number, :quantity, :money]
 

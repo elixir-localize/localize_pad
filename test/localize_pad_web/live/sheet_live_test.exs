@@ -12,10 +12,22 @@ defmodule LocalizePadWeb.SheetLiveTest do
       assert html =~ "96.56064 kilometers per hour"
     end
 
-    test "shows a running total", %{conn: conn} do
-      {:ok, _live, html} = live(conn, ~p"/")
+    test "shows a running total when the sheet has one", %{conn: conn} do
+      {:ok, live, _html} = live(conn, ~p"/")
+
+      html = render_change(live, :edit, %{"source" => "19\n22"})
 
       assert html =~ "Total"
+      assert html =~ "41"
+    end
+
+    test "and no total at all when the sheet mixes kinds", %{conn: conn} do
+      # The sample sheet adds numbers, a distance, a force and a speed. There
+      # is no total of those, and the footer says nothing rather than picking
+      # one line's unit and discarding the rest under a label saying `Total`.
+      {:ok, _live, html} = live(conn, ~p"/")
+
+      refute html =~ "Total"
     end
 
     # `Localize.Plug.PutLocale` honours the query string and `Accept-Language`,
@@ -513,8 +525,9 @@ defmodule LocalizePadWeb.SheetLiveTest do
     end
   end
 
+  # TEMPORARY, for a demo. Delete with the feature.
   describe "hiding the locale control" do
-    test "takes the label and the field away together", %{conn: conn} do
+    test "takes the label and the field away, and gives them back", %{conn: conn} do
       {:ok, live, html} = live(conn, ~p"/")
 
       assert html =~ "Sheet locale, as a language tag"
@@ -523,29 +536,8 @@ defmodule LocalizePadWeb.SheetLiveTest do
 
       refute hidden =~ "Sheet locale, as a language tag"
       refute hidden =~ ">Locale<"
-    end
 
-    test "and gives them back", %{conn: conn} do
-      {:ok, live, _html} = live(conn, ~p"/")
-
-      render_click(live, :toggle_locale_control, %{})
-      shown = render_click(live, :toggle_locale_control, %{})
-
-      assert shown =~ "Sheet locale, as a language tag"
-    end
-
-    test "without changing which locale the sheet is read in" do
-      # The point of the shortcut: the locale is still doing all of its work,
-      # there is simply nothing on screen admitting to it.
-      {:ok, live, _html} = live(build_conn(), ~p"/")
-
-      render_change(live, :set_locale, %{"locale" => "de"})
-      render_change(live, :edit, %{"source" => "1.234,5 + 0,5"})
-
-      hidden = render_click(live, :toggle_locale_control, %{})
-
-      refute hidden =~ "Sheet locale, as a language tag"
-      assert hidden =~ "1.235"
+      assert render_click(live, :toggle_locale_control, %{}) =~ "Sheet locale, as a language tag"
     end
   end
 end

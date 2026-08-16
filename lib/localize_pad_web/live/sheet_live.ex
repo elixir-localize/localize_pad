@@ -289,10 +289,8 @@ defmodule LocalizePadWeb.SheetLive do
      |> assign(:detail, detail_for(socket.assigns.sheet, selected, socket.assigns.locale))}
   end
 
-  # Ctrl-H hides the locale control, for showing an audience the sheet with no
-  # visible sign of what makes it work and asking whether they think it is
-  # localized. Nothing else changes: the locale is still doing everything it
-  # was, which is the point being made.
+  # TEMPORARY, for a demo. Delete this, its assign, the `:if` on the locale
+  # form and `presentationShortcut` in the hook.
   def handle_event("toggle_locale_control", _params, socket) do
     {:noreply, assign(socket, :show_locale, not socket.assigns.show_locale)}
   end
@@ -896,12 +894,8 @@ defmodule LocalizePadWeb.SheetLive do
           })
         },
 
-        // Bound to the document, not the textarea: during a talk the focus is
-        // wherever the last click left it, and the shortcut has to work anyway.
-        //
-        // Ctrl and not ⌘: on macOS ⌘H hides the application, and the browser
-        // never sees it. The cost is that Ctrl-H no longer deletes backwards
-        // in the sheet, which is the emacs binding macOS text fields carry.
+        // TEMPORARY, for a demo — delete with its server-side half. Ctrl rather
+        // than ⌘ because macOS takes ⌘H before the browser sees it.
         presentationShortcut() {
           this.onCtrlH = (event) => {
             if (event.ctrlKey && !event.metaKey && !event.altKey && event.key === "h") {
