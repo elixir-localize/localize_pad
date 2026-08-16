@@ -215,6 +215,16 @@
 }
 
 .sheet-input {
+  /* No vertical scrollbar here: the answer column has one, the two panes are
+     scroll-locked, and two bars for one document is one too many. Horizontal
+     stays — it is the only cue that a long line continues past the edge, and
+     the answer column cannot provide it because it never scrolls sideways.
+
+     Hidden, not disabled. The textarea still scrolls to follow the caret and
+     still accepts a scrollTop; only the bar is gone. The wheel is the one
+     thing that stops working on its own, so the hook drives it. */
+  overflow-y: hidden;
+  overflow-x: auto;
   position: relative;
   width: 100%;
   height: 100%;
