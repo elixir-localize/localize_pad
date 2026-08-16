@@ -98,22 +98,28 @@ defmodule LocalizePad.Highlight do
 
   # TEMPORARY, for a demo. Delete with the toggle in `LocalizePadWeb.SheetLive`.
   #
-  # A variable is skipped whatever it is named: `every = 3` makes `every` this
-  # sheet's word rather than ours, and the highlighter has already worked out
-  # which it is. Prose needs no such rule — a word nobody wrote down is not in
-  # the set, so `Friday`, `Tokio` and `Australian dollars` stay unmarked while
-  # `every` and `weekday` are marked, which is the whole distinction.
+  # Only these classes can be marked, because only in these did our grammar win
+  # the reading. `:variable` and `:definition` are the sheet's own names — the
+  # units example declares `height` precisely to show the word is still yours,
+  # and underlining it would say the opposite. `:unit` is a CLDR display name:
+  # the `week` in `$99 per week` is the unit, not the `week` in our
+  # day-of-the-week word set, and the highlighter has already decided which.
+  #
+  # Prose needs no rule. A word nobody wrote down is not in the set, so
+  # `Friday`, `Tokio` and `Australian dollars` stay unmarked.
+  @markable [:word, :keyword, :operator, :preference, :tax, nil]
+
   defp mark_authored(segments, _locale, false), do: segments
 
   defp mark_authored(segments, locale, true) do
     authored = Lexicon.authored(locale)
 
-    Enum.map(segments, fn
-      {:variable, text} ->
-        {:variable, text}
-
-      {class, text} ->
-        if authored?(text, authored), do: {[class, :authored], text}, else: {class, text}
+    Enum.map(segments, fn {class, text} ->
+      if class in @markable and authored?(text, authored) do
+        {[class, :authored], text}
+      else
+        {class, text}
+      end
     end)
   end
 

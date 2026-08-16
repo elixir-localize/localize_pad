@@ -31,6 +31,24 @@ defmodule LocalizePad.Temporal.Uncertain do
   @before_era ~w(bce bc)
 
   @doc """
+  The words this module had to be told.
+
+  TEMPORARY, for a demo — see `LocalizePad.Lexicon.authored/1`.
+
+  ### Returns
+
+  * A list of lowercased forms.
+
+  ### Examples
+
+      iex> "circa" in LocalizePad.Temporal.Uncertain.authored()
+      true
+
+  """
+  @spec authored() :: [String.t()]
+  def authored, do: @approximate ++ @before_era
+
+  @doc """
   Recognises an imprecise date.
 
   ### Arguments

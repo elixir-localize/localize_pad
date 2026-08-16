@@ -558,6 +558,43 @@ defmodule LocalizePadWeb.SheetLiveTest do
       refute marked =~ ~s(tok-authored">Tokyo)
     end
 
+    test "including grammar that lives outside the lexicon tables", %{conn: conn} do
+      {:ok, live, _html} = live(conn, ~p"/")
+
+      # `circa` is authored in `Temporal.Uncertain` and `monthly` in `Finance`,
+      # neither of which is one of the five lexicon tables.
+      render_change(live, :edit, %{
+        "source" => "circa 1750\nmonthly repayment on $10,000 over 6 years at 6%"
+      })
+
+      marked = render_click(live, :toggle_authored, %{})
+
+      assert marked =~ ~s(tok-authored">circa</span>)
+      assert marked =~ ~s(tok-authored">monthly</span>)
+    end
+
+    test "and leaves a declared name alone even when it is one of our words", %{conn: conn} do
+      # The units example declares `height` to show the word is still the
+      # reader's to use, so underlining it would say the opposite.
+      {:ok, live, _html} = live(conn, ~p"/")
+
+      render_change(live, :edit, %{"source" => "height = 1.8 m\nheight * 2"})
+      marked = render_click(live, :toggle_authored, %{})
+
+      refute marked =~ "tok-authored"
+    end
+
+    test "and a CLDR unit name that happens to be one of our words", %{conn: conn} do
+      # `week` here is the unit, not the `week` in the day-of-the-week set.
+      {:ok, live, _html} = live(conn, ~p"/")
+
+      render_change(live, :edit, %{"source" => "$99 per week"})
+      marked = render_click(live, :toggle_authored, %{})
+
+      assert marked =~ ~s(tok-authored">per</span>)
+      refute marked =~ ~s(tok-authored">week</span>)
+    end
+
     test "and leaves a variable alone whatever it is named", %{conn: conn} do
       {:ok, live, _html} = live(conn, ~p"/")
 

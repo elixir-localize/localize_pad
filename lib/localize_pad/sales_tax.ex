@@ -71,6 +71,24 @@ defmodule LocalizePad.SalesTax do
   end
 
   @doc """
+  The words this module had to be told.
+
+  TEMPORARY, for a demo — see `LocalizePad.Lexicon.authored/1`.
+
+  ### Returns
+
+  * A list of lowercased forms.
+
+  ### Examples
+
+      iex> LocalizePad.SalesTax.authored()
+      ["vat", "gst", "sales tax"]
+
+  """
+  @spec authored() :: [String.t()]
+  def authored, do: ["vat", "gst", "sales tax"]
+
+  @doc """
   Whether a word names a sales tax.
 
   ### Arguments
@@ -92,7 +110,7 @@ defmodule LocalizePad.SalesTax do
   """
   @spec names_tax?(String.t()) :: boolean()
   def names_tax?(word) when is_binary(word) do
-    String.downcase(word) in ["vat", "gst", "sales tax"]
+    String.downcase(word) in authored()
   end
 
   @doc """

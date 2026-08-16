@@ -61,6 +61,31 @@ defmodule LocalizePad.Finance do
 
   @calendar_units ~w(year month week day)
 
+  # The nouns and qualifiers that name a calculation, as against the numbers
+  # and units it works on.
+  @phrase_words ~w(
+    repayment repayments interest present value
+    after at over for total compounding compounded
+  )
+
+  @doc """
+  The words this module had to be told.
+
+  TEMPORARY, for a demo — see `LocalizePad.Lexicon.authored/1`.
+
+  ### Returns
+
+  * A list of lowercased forms.
+
+  ### Examples
+
+      iex> "monthly" in LocalizePad.Finance.authored()
+      true
+
+  """
+  @spec authored() :: [String.t()]
+  def authored, do: Map.keys(@frequencies) ++ @phrase_words
+
   @type slots :: %{
           principal: Money.t(),
           rate: Percentage.t(),

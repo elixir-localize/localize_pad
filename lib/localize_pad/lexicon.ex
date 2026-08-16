@@ -41,7 +41,8 @@ defmodule LocalizePad.Lexicon do
 
   """
 
-  alias LocalizePad.Locales
+  alias LocalizePad.{Finance, Locales, SalesTax}
+  alias LocalizePad.Temporal.Uncertain
 
   @type role ::
           :to
@@ -508,7 +509,14 @@ defmodule LocalizePad.Lexicon do
       Map.keys(recurrence.ordinals),
       Map.get(@subtotals, language, @subtotals.en),
       Map.get(@preferences, language, @preferences.en),
-      @usages |> Map.get(language, @usages.en) |> Map.keys()
+      @usages |> Map.get(language, @usages.en) |> Map.keys(),
+      # Grammar this application wrote that does not live in these five tables.
+      # English only, as those modules are — `circa`, `monthly repayment` and
+      # `VAT` are recognised in any locale because nothing has translated them
+      # yet, and the underline should say so rather than flatter the count.
+      Finance.authored(),
+      SalesTax.authored(),
+      Uncertain.authored()
     ]
     |> List.flatten()
     |> Enum.map(&String.downcase/1)
