@@ -290,14 +290,31 @@ defmodule LocalizePadWeb.SheetLiveTest do
       assert html =~ "41"
     end
 
-    test "share produces a payload that decodes back to the sheet" do
+    test "the share payload is rendered with the sheet, ready for the click" do
+      # It is in the markup rather than fetched on click, because copying to
+      # the clipboard needs the user's gesture still to be live and a server
+      # round trip outlives it.
       {:ok, live, _html} = live(build_conn(), ~p"/")
 
-      render_change(live, :edit, %{"source" => "19 + 22"})
-      render_click(live, :share)
+      html = render_change(live, :edit, %{"source" => "19 + 22"})
 
-      assert_push_event(live, "share", %{payload: payload})
+      assert [_whole, payload] = Regex.run(~r/id="share"[^>]*data-payload="([^"]+)"/, html)
       assert {:ok, "19 + 22", :en} = LocalizePad.Share.decode(payload)
+    end
+
+    test "the payload follows the sheet as it changes" do
+      {:ok, live, _html} = live(build_conn(), ~p"/")
+
+      payload_in = fn html ->
+        [_whole, payload] = Regex.run(~r/id="share"[^>]*data-payload="([^"]+)"/, html)
+        payload
+      end
+
+      first = payload_in.(render_change(live, :edit, %{"source" => "19 + 22"}))
+      second = payload_in.(render_change(live, :edit, %{"source" => "19 + 23"}))
+
+      assert {:ok, "19 + 22", :en} = LocalizePad.Share.decode(first)
+      assert {:ok, "19 + 23", :en} = LocalizePad.Share.decode(second)
     end
   end
 

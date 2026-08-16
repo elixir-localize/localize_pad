@@ -177,12 +177,6 @@ defmodule LocalizePadWeb.SheetLive do
     end
   end
 
-  def handle_event("share", _params, socket) do
-    payload = Share.encode(socket.assigns.source, socket.assigns.locale)
-
-    {:noreply, push_event(socket, "share", %{payload: payload})}
-  end
-
   def handle_event("dismiss", _params, socket) do
     {:noreply, socket |> assign(:selected, nil) |> assign(:detail, nil)}
   end
@@ -273,6 +267,7 @@ defmodule LocalizePadWeb.SheetLive do
     socket
     |> assign(:sheet, sheet)
     |> assign(:highlighted, Highlight.lines(socket.assigns.source, locale: socket.assigns.locale))
+    |> assign(:share_payload, Share.encode(socket.assigns.source, socket.assigns.locale))
     |> assign(:total, format_total(sheet, socket.assigns.locale))
     |> assign(:detail, detail_for(sheet, socket.assigns[:selected], socket.assigns.locale))
   end
@@ -370,13 +365,29 @@ defmodule LocalizePadWeb.SheetLive do
         <h1 class="text-lg font-semibold tracking-tight">LocalizePad</h1>
 
         <div class="flex items-center gap-3">
+          <%!-- No `phx-click`. Copying to the clipboard requires transient
+          user activation, and a server round trip outlives it — the write is
+          silently refused, which is exactly how this failed. The payload is
+          rendered with the sheet so the click has everything it needs and can
+          copy synchronously. --%>
           <button
+            id="share"
             type="button"
-            phx-click="share"
+            data-payload={@share_payload}
             class="btn btn-sm btn-ghost"
             title="Copy a link to this sheet"
           >
-            Share
+            <%!-- The label is the hook's, not the server's. `data-payload`
+            changes with every keystroke, so LiveView patches this button
+            often — and a patch mid-confirmation would wipe "Copied" a moment
+            after it appeared, which looks exactly like a button that did
+            nothing. --%>
+            <span
+              id="share-label"
+              phx-update="ignore"
+            >
+              Share
+            </span>
           </button>
 
           <div class="dropdown dropdown-end">
@@ -562,12 +573,37 @@ defmodule LocalizePadWeb.SheetLive do
             this.save(filename, content, "text/markdown")
           })
 
-          this.handleEvent("share", ({payload}) => {
-            const url = window.location.origin + window.location.pathname + FRAGMENT + payload
+          const button = document.getElementById("share")
 
-            window.history.replaceState(null, "", url)
-            navigator.clipboard && navigator.clipboard.writeText(url)
-          })
+          button &&
+            button.addEventListener("click", async () => {
+              const url =
+                window.location.origin +
+                window.location.pathname +
+                FRAGMENT +
+                button.dataset.payload
+
+              // The address bar gets it either way, so there is always a link
+              // to copy by hand if the clipboard refuses.
+              window.history.replaceState(null, "", url)
+
+              // Confirm first, correct afterwards. `writeText` returns a
+              // promise that in some browsers neither resolves nor rejects
+              // promptly, and feedback that waits on it can simply never
+              // arrive — which looks identical to a button that does nothing,
+              // and is what this button was already accused of.
+              const label = document.getElementById("share-label")
+              this.flash(label, "Copied")
+
+              try {
+                await navigator.clipboard.writeText(url)
+              } catch (_refused) {
+                // Denied permission, or an insecure context. The link is in
+                // the address bar either way, so say that rather than leave a
+                // false confirmation standing.
+                this.flash(label, "In address bar")
+              }
+            })
         },
 
         // A link beats stored state: someone who follows a link wants the
@@ -661,6 +697,17 @@ defmodule LocalizePadWeb.SheetLive do
 
           this.handleEvent("scroll-sync", () => share(textarea.scrollTop, textarea.scrollLeft))
           share(textarea.scrollTop, textarea.scrollLeft)
+        },
+
+        // A silent copy is indistinguishable from a broken button.
+        flash(element, message) {
+          element.__original = element.__original || element.textContent.trim()
+          element.textContent = message
+
+          clearTimeout(element.__restore)
+          element.__restore = setTimeout(() => {
+            element.textContent = element.__original
+          }, 1400)
         },
 
         // Save on input rather than on the debounced change, so a reload
