@@ -441,7 +441,10 @@ defmodule LocalizePadWeb.SheetLive do
     <div class="mx-auto flex h-screen max-w-5xl flex-col px-4 py-6">
       <header class="mb-4 flex items-center justify-between gap-4">
         <h1 class="flex items-center gap-2 text-lg font-semibold tracking-tight">
-          <img src={~p"/images/logo.png"} alt="" width="24" height="24" class="shrink-0" />
+          <%!-- 48px for a 24px slot, so it stays sharp on a 2x display. The
+          full-size logo.png is 1200px and 122KB — a third of a megabyte of
+          header on a page whose whole point is that it loads instantly. --%>
+          <img src={~p"/images/logo-48.png"} alt="" width="24" height="24" class="shrink-0" />
           LocalizePad
         </h1>
 
