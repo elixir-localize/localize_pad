@@ -1,0 +1,52 @@
+# Fly.io configuration.
+#
+# `app` is a placeholder until `fly launch` claims a real name — Fly rewrites
+# this file on launch, so set the name there rather than guessing one here.
+#
+# Two things about this app shape the config:
+#
+# A sheet lives in the URL fragment and in `localStorage`, never on the server,
+# so there is no session state to keep on one machine. No sticky sessions, no
+# affinity, and scaling out is just raising the machine count.
+#
+# The image is large for a web app — roughly 25MB of it is CLDR locale data,
+# ICU word-break dictionaries and the JPL ephemeris that `astro` ships. That is
+# data the app reads at runtime, not build leftovers, so it cannot be pruned
+# from the runner stage.
+
+app = "localize-pad"
+primary_region = "syd"
+kill_signal = "SIGTERM"
+
+[build]
+
+[env]
+  PHX_HOST = "localize-pad.fly.dev"
+  PORT = "8080"
+  # The locale a sheet opens in when the browser asks for nothing in
+  # particular. Every Localize-family app sets this explicitly rather than
+  # letting the default drift.
+  LOCALIZE_DEFAULT_LOCALE = "en"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  # Zero is deliberate. Nothing is lost when the last machine stops: sheets are
+  # in the browser and shared links carry their own contents, so a cold start
+  # costs a few seconds and nothing else.
+  min_machines_running = 0
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 1000
+    soft_limit = 800
+
+# Every keystroke re-evaluates the sheet over the LiveView socket, so the
+# work is small but frequent. 1GB leaves room for the CLDR and dictionary
+# data the app holds in memory.
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"

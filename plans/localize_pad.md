@@ -1029,8 +1029,8 @@ format it a second time, in whatever locale Gettext resolved rather than the she
 *Gettext does no parent-locale fallback.* A sheet in `de-AT` finds no `de-AT` catalogue and would
 answer in English, so the lookup narrows to the language subtag.
 
-**Deployment target: Fly.io.** What it implies concretely, none of it exotic but all of it easy
-to discover the hard way:
+**Deployment target: Fly.io.** Scaffolded — `Dockerfile`, `rel/` and `fly.toml` are in the repo.
+What it implied concretely, none of it exotic but all of it easy to discover the hard way:
 
 * `mix phx.gen.release --docker` for the release and Dockerfile, then `fly launch`.
 
@@ -1043,13 +1043,24 @@ to discover the hard way:
   whole line as one token — the segmentation degrades rather than failing, which is the worst way
   to find out.
 
-* **The JPL ephemeris that `astro` wants** is cached in CI for the same reason. Decide whether
-  the image carries it or the app tolerates its absence.
+* **The JPL ephemeris that `astro` wants** turned out to need nothing: it ships inside the
+  package at `deps/astro/priv/de440s-astro.bsp` (8.8MB), so Mix copies it into the release like
+  any other `priv` file. It is cached in CI only because CI does not keep `deps/`.
 
-* `LOCALIZE_DEFAULT_LOCALE` and `SECRET_KEY_BASE` as secrets; `PHX_HOST` set to the Fly hostname.
+* **`ca-certificates` is not in the generated Dockerfile's package list**, and both downloads are
+  over HTTPS. Without it they fail and the image is quietly short of its data.
+
+* `LOCALIZE_DEFAULT_LOCALE` and `PHX_HOST` are set in `fly.toml`; `SECRET_KEY_BASE` and
+  `DATABASE_URL` are secrets set with `fly secrets set`.
 
 * Sharing needs no session affinity — the sheet lives in the URL fragment and `localStorage` —
-  so a single small machine is enough to start, and scaling out needs no sticky sessions.
+  so a single small machine is enough to start and scaling out needs no sticky sessions. It also
+  makes `min_machines_running = 0` safe: nothing is lost when the last machine stops, so a cold
+  start costs a few seconds and nothing else.
+
+* **The image is large for a web app**, roughly 25MB of it CLDR data, ICU dictionaries and the
+  ephemeris. That is data the app reads at runtime, not build leftovers, so it cannot be pruned
+  from the runner stage.
 
 **Sharing puts the whole sheet in the URL fragment.** No account, no row in a table, no record
 to rot — and a fragment is never sent in an HTTP request, so a shared sheet does not pass
