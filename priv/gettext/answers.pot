@@ -25,3 +25,8 @@ msgstr ""
 #, elixir-autogen, icu-format
 msgid "{$count} dates · {$listed} …"
 msgstr ""
+
+#: lib/localize_pad/refusal.ex:48
+#, elixir-autogen, icu-format
+msgid "no rate declared — add {$example}"
+msgstr ""

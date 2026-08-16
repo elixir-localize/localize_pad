@@ -122,12 +122,23 @@ defmodule LocalizePad.Currency do
     match?({:ok, _code}, resolve(marker, locale))
   end
 
+  # `$` means the reader's own dollar — but only where the reader's currency is
+  # actually written `$`. That holds for the US, Australia, Canada, Singapore
+  # and a dozen others, and it does not hold for Britain, Germany or Japan: a
+  # reader there who types `$300` means dollars, and answering `£300` or
+  # `€300` is a wrong number rather than a localized one.
+  #
+  # CLDR's *narrow* symbol is what decides it, because the standard symbol
+  # disambiguates between currencies that share one — `A$` for Australia — and
+  # would reject the very locales this is meant to serve.
   defp dollar(locale) do
-    case Localize.Currency.currency_from_locale(locale) do
-      {:ok, currency} -> {:ok, currency}
-      # A locale with no currency of its own still has to mean something by
+    with {:ok, currency} <- Localize.Currency.currency_from_locale(locale),
+         {:ok, "$"} <- Localize.Currency.symbol(currency, :narrow) do
+      {:ok, currency}
+    else
+      # A locale whose money is not a dollar still has to mean something by
       # `$`, and the US dollar is the least surprising reading.
-      _other -> {:ok, :USD}
+      _not_a_dollar -> {:ok, :USD}
     end
   end
 

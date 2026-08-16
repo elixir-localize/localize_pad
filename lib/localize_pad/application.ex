@@ -7,6 +7,13 @@ defmodule LocalizePad.Application do
 
   @impl true
   def start(_type, _args) do
+    # Before anything can read a locale. A release ships no locale data — see
+    # `LocalizePad.Locales.ensure_downloaded/0` — and dev and test are
+    # provisioned by `mix setup` instead, so this is off unless configured.
+    if Application.get_env(:localize_pad, :download_locales_on_start, false) do
+      LocalizePad.Locales.ensure_downloaded()
+    end
+
     children =
       [LocalizePadWeb.Telemetry] ++
         repo() ++

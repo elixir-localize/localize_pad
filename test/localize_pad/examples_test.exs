@@ -68,10 +68,10 @@ defmodule LocalizePad.ExamplesTest do
 
     test "the set covers more than one language" do
       # The point of the project is not demonstrated by six English sheets.
-      locales = Examples.all() |> Enum.map(& &1.locale) |> Enum.uniq()
+      locales = Examples.all() |> Enum.map(&to_string(&1.locale)) |> Enum.uniq()
 
       assert length(locales) >= 3
-      assert :en in locales
+      assert "en" in locales
     end
   end
 

@@ -199,6 +199,25 @@ defmodule LocalizePad.Temporal.Workdays do
   end
 
   defp resolve(fields, options) do
-    LocalizePad.Temporal.resolve(fields, Keyword.take(options, [:reference_date]))
+    with {:ok, resolved} <-
+           LocalizePad.Temporal.resolve(fields, Keyword.take(options, [:reference_date])) do
+      day(resolved)
+    end
+  end
+
+  # Every question in this module is about a *day*, and the resolver will
+  # happily return something coarser: `is August 2026 a workday` resolves to a
+  # month, and Tempo raises `ArgumentError` rather than returning an error
+  # when asked whether a month is a weekend. That is a crash on the render
+  # path from a line somebody could plausibly type, so the coarser value is
+  # turned back into a refusal here.
+  #
+  # Checked by asking Tempo to produce a date rather than by inspecting the
+  # resolved shape, so this keeps agreeing with Tempo about what a day is.
+  defp day(resolved) do
+    case Tempo.to_date(resolved) do
+      {:ok, _date} -> {:ok, resolved}
+      {:error, _reason} -> {:error, :not_a_day}
+    end
   end
 end

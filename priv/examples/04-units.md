@@ -31,4 +31,24 @@ Locale: `en`
 
 500 GB to TB
 1.5 MB per second to GB per hour
+
+# Whatever your part of the world measures in
+
+// `local units` asks for the answer the way a
+// reader here would write it, and CLDR decides
+// what that means from the territory in your
+// locale — not from the language.
+//
+// Switch the locale to en-AU and this stays in
+// kilometres. Switch to en-US and it becomes
+// miles. en-GB gets miles too, and yet keeps
+// Celsius below, because that is what Britain
+// actually does.
+42.195 km in local units
+70 kg in local units
+25 celsius in local units
+
+// The word can follow the value directly, which
+// is the natural order in most languages.
+42.195 km locally
 ```

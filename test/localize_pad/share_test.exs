@@ -9,7 +9,8 @@ defmodule LocalizePad.ShareTest do
     test "source and locale both survive" do
       source = "# Trip\n\n19 + 22\nhotel = 120 EUR"
 
-      assert {:ok, ^source, :de} = source |> Share.encode(:de) |> Share.decode()
+      assert {:ok, ^source, locale} = source |> Share.encode(:de) |> Share.decode()
+      assert to_string(locale) == "de"
     end
 
     test "a sheet decoded from a link computes what the sender saw" do
@@ -24,7 +25,8 @@ defmodule LocalizePad.ShareTest do
     test "newlines, unicode and the sheet's own syntax survive" do
       source = "# 日本語\n\n100キロメートルをマイルで\n// a comment\n@1 + 1"
 
-      assert {:ok, ^source, :ja} = source |> Share.encode(:ja) |> Share.decode()
+      assert {:ok, ^source, locale} = source |> Share.encode(:ja) |> Share.decode()
+      assert to_string(locale) == "ja"
     end
 
     test "the payload is URL-safe" do

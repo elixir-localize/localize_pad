@@ -73,6 +73,25 @@ defmodule LocalizePad.Value do
     Unit.to_string(unit, format_options(options))
   end
 
+  # A single answer written in more than one unit: `5 feet, 10.87 inches`.
+  # `42 km in local units` produces this for a reader whose territory measures
+  # a height in feet and inches, and the parts are one quantity rather than a
+  # list of them — so they are joined by the locale's own "and" list format
+  # rather than by a comma this file chose.
+  def format(parts, options) when is_list(parts) do
+    formatted =
+      Enum.reduce_while(parts, {:ok, []}, fn part, {:ok, done} ->
+        case format(part, options) do
+          {:ok, text} -> {:cont, {:ok, [text | done]}}
+          {:error, reason} -> {:halt, {:error, reason}}
+        end
+      end)
+
+    with {:ok, texts} <- formatted do
+      texts |> Enum.reverse() |> Localize.List.to_string(format_options(options))
+    end
+  end
+
   def format(number, options) when is_number(number) do
     Localize.Number.to_string(number, format_options(options))
   end

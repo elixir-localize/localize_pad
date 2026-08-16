@@ -157,6 +157,14 @@ defmodule LocalizePadWeb.SheetLiveTest do
       "sheet:" <> Plug.Conn.get_session(conn, "session_id")
     end
 
+    # A broadcast stands in for another window, and a window publishes the
+    # resolved tag it is holding — not a name for one.
+    defp tag(locale) do
+      {:ok, language_tag} = LocalizePad.Locales.resolve(locale)
+
+      language_tag
+    end
+
     test "an edit in one window reaches the other" do
       conn = get(build_conn(), ~p"/")
       {:ok, live, _html} = live(conn)
@@ -164,7 +172,7 @@ defmodule LocalizePadWeb.SheetLiveTest do
       Phoenix.PubSub.broadcast(
         LocalizePad.PubSub,
         session_topic(conn),
-        {:sheet, self(), "19 + 22", :en}
+        {:sheet, self(), "19 + 22", tag("en")}
       )
 
       assert render(live) =~ "41"
@@ -180,12 +188,12 @@ defmodule LocalizePadWeb.SheetLiveTest do
       Phoenix.PubSub.broadcast(
         LocalizePad.PubSub,
         session_topic(conn),
-        {:sheet, self(), "1.234,5 + 1", :de}
+        {:sheet, self(), "1.234,5 + 1", tag("de")}
       )
 
       html = render(live)
       assert html =~ "1.235,5"
-      assert html =~ ~s(value="de" selected)
+      assert html =~ ~s(value="de")
     end
 
     test "another session's edit is not received" do
@@ -197,7 +205,7 @@ defmodule LocalizePadWeb.SheetLiveTest do
       Phoenix.PubSub.broadcast(
         LocalizePad.PubSub,
         "sheet:somebody-else-entirely",
-        {:sheet, self(), "99 + 1", :en}
+        {:sheet, self(), "99 + 1", tag("en")}
       )
 
       html = render(live)
@@ -226,7 +234,7 @@ defmodule LocalizePadWeb.SheetLiveTest do
       Phoenix.PubSub.subscribe(LocalizePad.PubSub, session_topic(conn))
       render_change(live, :edit, %{"source" => "19 + 22"})
 
-      assert_receive {:sheet, from, "19 + 22", :en}
+      assert_receive {:sheet, from, "19 + 22", %{language: :en}}
       refute from == self()
     end
   end
@@ -246,7 +254,7 @@ defmodule LocalizePadWeb.SheetLiveTest do
 
       # The German pad read in English would answer differently, so the locale
       # travels with it.
-      assert html =~ ~s(value="de" selected)
+      assert html =~ ~s(value="de")
       assert html =~ "1.235,5"
       assert html =~ "5 Termine"
     end
@@ -286,7 +294,7 @@ defmodule LocalizePadWeb.SheetLiveTest do
       html = render_click(live, :open, %{"content" => markdown})
 
       assert html =~ "1.235,5"
-      assert html =~ ~s(value="de" selected)
+      assert html =~ ~s(value="de")
     end
 
     test "a plain list of sums is a sheet" do
@@ -361,7 +369,7 @@ defmodule LocalizePadWeb.SheetLiveTest do
       html = render_click(live, :open_shared, %{"payload" => payload})
 
       assert html =~ "1.235,5"
-      assert html =~ ~s(value="de" selected)
+      assert html =~ ~s(value="de")
     end
 
     test "a bad link leaves the sheet alone rather than failing the page" do
@@ -382,7 +390,8 @@ defmodule LocalizePadWeb.SheetLiveTest do
       html = render_change(live, :edit, %{"source" => "19 + 22"})
 
       assert [_whole, payload] = Regex.run(~r/id="share"[^>]*data-payload="([^"]+)"/, html)
-      assert {:ok, "19 + 22", :en} = LocalizePad.Share.decode(payload)
+      assert {:ok, "19 + 22", locale} = LocalizePad.Share.decode(payload)
+      assert to_string(locale) == "en"
     end
 
     test "the payload follows the sheet as it changes" do
@@ -396,8 +405,8 @@ defmodule LocalizePadWeb.SheetLiveTest do
       first = payload_in.(render_change(live, :edit, %{"source" => "19 + 22"}))
       second = payload_in.(render_change(live, :edit, %{"source" => "19 + 23"}))
 
-      assert {:ok, "19 + 22", :en} = LocalizePad.Share.decode(first)
-      assert {:ok, "19 + 23", :en} = LocalizePad.Share.decode(second)
+      assert {:ok, "19 + 22", _first_locale} = LocalizePad.Share.decode(first)
+      assert {:ok, "19 + 23", _second_locale} = LocalizePad.Share.decode(second)
     end
   end
 

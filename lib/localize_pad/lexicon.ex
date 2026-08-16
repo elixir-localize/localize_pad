@@ -41,6 +41,8 @@ defmodule LocalizePad.Lexicon do
 
   """
 
+  alias LocalizePad.Locales
+
   @type role :: :to | :per | :after | :before | :of | :off | :on | :intersect
 
   @type deictic :: :now | :today | :tomorrow | :yesterday
@@ -246,6 +248,24 @@ defmodule LocalizePad.Lexicon do
     }
   }
 
+  # Words that name the reader's own units as a conversion target: `42 km in
+  # local units`. The answer comes from CLDR's unit preferences for the sheet's
+  # territory, so `en-AU` keeps kilometres where `en-US` gets miles.
+  #
+  # Single words only, deliberately. `local units` and `unités locales` then
+  # work without a multi-word matcher, because the second word falls through as
+  # trailing prose the way `19 + 22 for breakfast` already does.
+  #
+  # These are *targets*, not operators, so they sit here rather than in the
+  # role table — the same reason `today` does.
+  @preferences %{
+    en: ["local", "locally"],
+    de: ["lokal", "lokale", "lokalen", "ortsüblich"],
+    fr: ["local", "locale", "locales"],
+    es: ["local", "locales"],
+    ja: ["現地", "ローカル"]
+  }
+
   # Words naming a moment relative to the present. Kept separate from the role
   # table because these are *operands* rather than operators — `today` is a
   # date, not something that acts on one.
@@ -315,12 +335,12 @@ defmodule LocalizePad.Lexicon do
       :error
 
   """
-  @spec deictic(String.t(), atom()) :: {:ok, deictic()} | :error
+  @spec deictic(String.t(), Locales.locale()) :: {:ok, deictic()} | :error
   def deictic(word, locale \\ :en) when is_binary(word) do
     downcased = String.downcase(word)
 
-    @deictics
-    |> Map.get(locale, @deictics.en)
+    locale
+    |> deictics()
     |> Enum.find_value(:error, fn {moment, forms} ->
       if downcased in forms, do: {:ok, moment}
     end)
@@ -356,7 +376,7 @@ defmodule LocalizePad.Lexicon do
       :error
 
   """
-  @spec role(String.t(), atom()) :: {:ok, role()} | :error
+  @spec role(String.t(), Locales.locale()) :: {:ok, role()} | :error
   def role(word, locale \\ :en) when is_binary(word) do
     downcased = String.downcase(word)
 
@@ -386,9 +406,9 @@ defmodule LocalizePad.Lexicon do
       ["to", "in", "as", "->"]
 
   """
-  @spec lexicon(atom()) :: %{role() => [String.t()]}
+  @spec lexicon(Locales.locale()) :: %{role() => [String.t()]}
   def lexicon(locale \\ :en) do
-    Map.get(@lexicons, locale, @lexicons.en)
+    Map.get(@lexicons, language(locale), @lexicons.en)
   end
 
   @doc """
@@ -411,9 +431,9 @@ defmodule LocalizePad.Lexicon do
       ["today"]
 
   """
-  @spec deictics(atom()) :: %{deictic() => [String.t()]}
+  @spec deictics(Locales.locale()) :: %{deictic() => [String.t()]}
   def deictics(locale \\ :en) do
-    Map.get(@deictics, locale, @deictics.en)
+    Map.get(@deictics, language(locale), @deictics.en)
   end
 
   @doc """
@@ -442,7 +462,7 @@ defmodule LocalizePad.Lexicon do
       false
 
   """
-  @spec every?(String.t(), atom()) :: boolean()
+  @spec every?(String.t(), Locales.locale()) :: boolean()
   def every?(word, locale \\ :en) when is_binary(word) do
     word in recurrence(locale).every
   end
@@ -470,7 +490,7 @@ defmodule LocalizePad.Lexicon do
       true
 
   """
-  @spec weekday?(String.t(), atom()) :: boolean()
+  @spec weekday?(String.t(), Locales.locale()) :: boolean()
   def weekday?(word, locale \\ :en) when is_binary(word) do
     word in recurrence(locale).weekday
   end
@@ -508,7 +528,7 @@ defmodule LocalizePad.Lexicon do
       :error
 
   """
-  @spec ordinal(String.t(), atom()) :: {:ok, integer()} | :error
+  @spec ordinal(String.t(), Locales.locale()) :: {:ok, integer()} | :error
   def ordinal(word, locale \\ :en) when is_binary(word) do
     Map.fetch(recurrence(locale).ordinals, word)
   end
@@ -543,7 +563,7 @@ defmodule LocalizePad.Lexicon do
       false
 
   """
-  @spec what?(String.t(), atom()) :: boolean()
+  @spec what?(String.t(), Locales.locale()) :: boolean()
   def what?(word, locale \\ :en) when is_binary(word) do
     word in Map.get(recurrence(locale), :what, [])
   end
@@ -583,7 +603,7 @@ defmodule LocalizePad.Lexicon do
       false
 
   """
-  @spec day_of_week?([String.t()], atom()) :: boolean()
+  @spec day_of_week?([String.t()], Locales.locale()) :: boolean()
   def day_of_week?(words, locale \\ :en) when is_list(words) do
     locale
     |> recurrence()
@@ -611,9 +631,9 @@ defmodule LocalizePad.Lexicon do
       ["every", "each"]
 
   """
-  @spec recurrence(atom()) :: map()
+  @spec recurrence(Locales.locale()) :: map()
   def recurrence(locale \\ :en) do
-    Map.get(@recurrence, locale, @recurrence.en)
+    Map.get(@recurrence, language(locale), @recurrence.en)
   end
 
   @doc """
@@ -632,5 +652,63 @@ defmodule LocalizePad.Lexicon do
   @spec known_locales() :: [atom()]
   def known_locales do
     @lexicons |> Map.keys() |> Enum.sort()
+  end
+
+  @doc """
+  Whether a word asks for the answer in the reader's own units.
+
+  Lookup is case-insensitive.
+
+  ### Arguments
+
+  * `word` - the surface form to look up.
+
+  * `locale` - the locale whose vocabulary to read.
+
+  ### Returns
+
+  * `true` or `false`.
+
+  ### Examples
+
+      iex> LocalizePad.Lexicon.preference?("local", :en)
+      true
+
+      iex> LocalizePad.Lexicon.preference?("lokal", :de)
+      true
+
+      iex> LocalizePad.Lexicon.preference?("kilometer", :en)
+      false
+
+  """
+  @spec preference?(String.t(), Locales.locale()) :: boolean()
+  def preference?(word, locale \\ :en) when is_binary(word) do
+    String.downcase(word) in Map.get(@preferences, language(locale), @preferences.en)
+  end
+
+  # The tables above are keyed by language, and a sheet carries a whole
+  # language tag. The language subtag rather than `cldr_locale_id`, because
+  # vocabulary is a property of the language: `de-AT` says `von` exactly as
+  # `de` does, and keying on the resolved data file would send `en-AU` to
+  # English by luck and a future `de-AT` table to English by mistake.
+  #
+  # Bare atoms and strings are still accepted, since tests and doctests pass
+  # `:en` and it would be perverse to make them build a tag first. They are
+  # resolved rather than used as keys directly: `Map.get(@lexicons, "de", ...)`
+  # misses and falls through to English, which would cost a German sheet its
+  # German operator words without failing anything.
+  defp language(%Localize.LanguageTag{language: language}), do: language
+
+  defp language(locale) when is_atom(locale) and not is_nil(locale) do
+    if Map.has_key?(@lexicons, locale), do: locale, else: resolve_language(locale)
+  end
+
+  defp language(locale), do: resolve_language(locale)
+
+  defp resolve_language(locale) do
+    case Localize.validate_locale(locale) do
+      {:ok, language_tag} -> language_tag.language
+      {:error, _reason} -> :en
+    end
   end
 end

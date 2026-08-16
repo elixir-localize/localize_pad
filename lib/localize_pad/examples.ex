@@ -28,7 +28,7 @@ defmodule LocalizePad.Examples do
 
   """
 
-  alias LocalizePad.Sheet
+  alias LocalizePad.{Locales, Sheet}
 
   @directory "examples"
 
@@ -36,7 +36,7 @@ defmodule LocalizePad.Examples do
           id: String.t(),
           title: String.t(),
           source: String.t(),
-          locale: atom() | nil
+          locale: Locales.tag() | nil
         }
 
   @doc """
@@ -83,8 +83,8 @@ defmodule LocalizePad.Examples do
   ### Examples
 
       iex> {:ok, example} = LocalizePad.Examples.fetch("01-a-trip")
-      iex> example.locale
-      :en
+      iex> to_string(example.locale)
+      "en"
 
       iex> LocalizePad.Examples.fetch("../../etc/passwd")
       :error

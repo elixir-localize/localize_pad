@@ -122,6 +122,7 @@ defmodule LocalizePad.Tokenizer do
       |> mark_currencies(locale)
       |> join_zones()
       |> mark_calendars()
+      |> mark_preferences(locale)
 
     {:ok, tokens}
   end
@@ -413,6 +414,30 @@ defmodule LocalizePad.Tokenizer do
     end)
   end
 
+  # `42 km in local units`. Like a calendar, this only ever names a conversion
+  # target, and it carries the locale it was read under: "local" means the
+  # locale the sheet is being read in, and the sheet is re-tokenized whenever
+  # that changes, so resolving it here rather than at evaluation keeps the
+  # answer and the question in step.
+  #
+  # Runs last, after currencies and calendars, so a word that is genuinely one
+  # of those keeps its stronger reading. `local` is not a unit in any locale's
+  # vocabulary, but the ordering costs nothing and the alternative is a rule
+  # nobody can see.
+  defp mark_preferences(tokens, locale) do
+    Enum.map(tokens, fn
+      %Token{kind: :word, source: word} = token ->
+        if Lexicon.preference?(word, lexicon_locale(locale)) do
+          Token.covering(Token.new(:preference, locale, word), [token])
+        else
+          token
+        end
+
+      token ->
+        token
+    end)
+  end
+
   # A calendar's name is only ever a conversion target, so like a zone it is
   # marked but declines to be a value on its own.
   defp mark_calendars(tokens) do
@@ -550,7 +575,7 @@ defmodule LocalizePad.Tokenizer do
   defp classify_word(word, locale) do
     cond do
       SalesTax.names_tax?(word) ->
-        Token.new(:tax, SalesTax.configured(), word)
+        Token.new(:tax, SalesTax.named(word), word)
 
       match?({:ok, _moment}, Lexicon.deictic(word, lexicon_locale(locale))) ->
         {:ok, moment} = Lexicon.deictic(word, lexicon_locale(locale))
@@ -599,6 +624,11 @@ defmodule LocalizePad.Tokenizer do
     if language(locale) == "en", do: :error, else: Units.resolve(word, locale)
   end
 
+  # A sheet arrives holding a resolved tag, so the common case is a field read.
+  # Both of these are called per word, and re-validating a tag that is already
+  # a tag put a CLDR lookup in the middle of the tokenizer's inner loop.
+  defp language(%Localize.LanguageTag{language: language}), do: to_string(language)
+
   defp language(locale) do
     case Localize.validate_locale(locale) do
       {:ok, tag} -> to_string(tag.language)
@@ -610,9 +640,11 @@ defmodule LocalizePad.Tokenizer do
   # about locales it holds no data for — a request for `pt-BR` resolves to a
   # tag whose `:cldr_locale_id` is a locale we do have. Follow that resolution
   # so the operator vocabulary matches the data the rest of the line uses.
+  defp lexicon_locale(%Localize.LanguageTag{} = tag), do: tag
+
   defp lexicon_locale(locale) do
     case Localize.validate_locale(locale) do
-      {:ok, %{cldr_locale_id: cldr_locale_id}} -> cldr_locale_id
+      {:ok, tag} -> tag
       _other -> :en
     end
   end

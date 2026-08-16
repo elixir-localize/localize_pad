@@ -42,6 +42,10 @@ defmodule LocalizePad.Evaluator do
           number()
           | Decimal.t()
           | Unit.t()
+          # One quantity written in more than one unit, which is how CLDR
+          # answers `1.8 m in local units` for a reader who measures a height
+          # in feet and inches.
+          | [Unit.t()]
           | Tempo.t()
           | Tempo.Duration.t()
           | Localize.Duration.t()
@@ -61,6 +65,9 @@ defmodule LocalizePad.Evaluator do
           | String.t()
           | Date.t()
           | {:calendar, module()}
+          # `local units` — a conversion target that names the reader rather
+          # than a unit, carrying the tag it was read under.
+          | {:preference, LocalizePad.Locales.tag()}
   @type environment :: %{optional(String.t()) => value()}
 
   @doc """
@@ -124,12 +131,16 @@ defmodule LocalizePad.Evaluator do
     {:ok, {:currency, code}}
   end
 
-  def eval({:tax, tax}, _environment) do
-    {:ok, tax}
+  def eval({:tax, tax}, environment) do
+    declared_rate(tax, environment)
   end
 
   def eval({:calendar, calendar}, _environment) do
     {:ok, {:calendar, calendar}}
+  end
+
+  def eval({:preference, locale}, _environment) do
+    {:ok, {:preference, locale}}
   end
 
   def eval({:finance, kind, slots}, _environment) do
@@ -196,6 +207,27 @@ defmodule LocalizePad.Evaluator do
   defp negate(%Unit{} = unit), do: {:ok, Math.negate(unit)}
 
   # ── Arithmetic ──────────────────────────────────────────────────────────
+
+  # `VAT = 25%` is the only way a sheet gets a rate. There is no configured
+  # fallback, because a sheet is shared by URL and has to mean the same thing
+  # to whoever opens it, and because a guessed rate answers `$0.00` — which
+  # reads like a number rather than like a missing declaration.
+  #
+  # Only the *rate* is taken from the declaration, never the semantics:
+  # `VAT on $300` stays the tax amount, where `25% on $300` is the grossed-up
+  # total. Binding the name to a plain percentage would have quietly swapped
+  # one for the other, which is what this phrase family exists to prevent.
+  defp declared_rate(%SalesTax{name: name} = tax, environment) do
+    wanted = String.downcase(name)
+
+    Enum.find_value(environment, {:error, {:undeclared_rate, name}}, fn
+      {key, %Percentage{} = rate} ->
+        if String.downcase(key) == wanted, do: {:ok, %{tax | rate: rate}}
+
+      _not_a_rate ->
+        nil
+    end)
+  end
 
   defp apply_operator(:add, left, right) when is_number(left) and is_number(right) do
     {:ok, left + right}
@@ -596,6 +628,24 @@ defmodule LocalizePad.Evaluator do
 
   defp convert(%Unit{} = source, %Unit{} = target) do
     Unit.convert(source, target.name)
+  end
+
+  # `42 km in local units`. The target is not a unit but a question — what does
+  # a reader here measure this in? — and CLDR answers it from the territory:
+  # `en-AU` keeps kilometres, `en-US` gets miles, `en-GB` gets miles but keeps
+  # Celsius. This is the one conversion whose answer depends on who is asking,
+  # which is why it needs the whole language tag and not just a language.
+  #
+  # The answer can be more than one unit. A height that is 180 cm to an
+  # Australian is 5 foot 10.87 inches to an American, and CLDR says so by
+  # returning both parts — so the list is kept rather than flattened to its
+  # first element, and `LocalizePad.Value` renders it.
+  defp convert(%Unit{} = source, {:preference, locale}) do
+    case Localize.Unit.localize(source, locale: locale) do
+      {:ok, [single]} -> {:ok, single}
+      {:ok, parts} when is_list(parts) -> {:ok, parts}
+      {:error, _reason} -> {:error, :no_local_unit}
+    end
   end
 
   # `7:30 to 20:45` and `3 March to 30 May` read `to` as a range rather than a

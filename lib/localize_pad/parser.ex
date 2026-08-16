@@ -104,6 +104,7 @@ defmodule LocalizePad.Parser do
           | {:currency, atom()}
           | {:tax, LocalizePad.SalesTax.t()}
           | {:calendar, module()}
+          | {:preference, term()}
           | {:neg, ast()}
           | {:binary, atom(), ast(), ast()}
           | {:convert, ast(), ast()}
@@ -251,6 +252,10 @@ defmodule LocalizePad.Parser do
     {:ok, {:tax, tax}, rest}
   end
 
+  defp parse_prefix([%Token{kind: :preference, value: locale} | rest], _variables, _binding_power) do
+    {:ok, {:preference, locale}, rest}
+  end
+
   defp parse_prefix([%Token{kind: :calendar, value: calendar} | rest], _variables, _binding_power) do
     {:ok, {:calendar, calendar}, rest}
   end
@@ -307,9 +312,31 @@ defmodule LocalizePad.Parser do
 
   # An infix position is where an operator is expected. `in` read here is the
   # conversion keyword.
-  defp parse_infix(left, tokens, minimum_binding_power, variables) do
-    tokens = skip_noise(tokens, variables)
+  # `42 km locally` and `70 kg lokal`. The target follows the value with no
+  # operator between them, which is the natural word order in every locale this
+  # ships — `in local units` reads well in English and `in lokal` does not, so
+  # the postfix form is what makes the vocabulary usable rather than a phrase
+  # that only parses in one language.
+  #
+  # It binds as loosely as `to`, being the same conversion, so the whole
+  # expression to its left is the operand: `40 km + 2 km locally`.
+  defp parse_infix(left, tokens, minimum_binding_power, variables)
+       when minimum_binding_power <= 3 do
+    case skip_noise(tokens, variables) do
+      [%Token{kind: :preference, value: locale} | rest] ->
+        {:convert, left, {:preference, locale}}
+        |> parse_infix(rest, minimum_binding_power, variables)
 
+      tokens ->
+        infix(left, tokens, minimum_binding_power, variables)
+    end
+  end
+
+  defp parse_infix(left, tokens, minimum_binding_power, variables) do
+    infix(left, skip_noise(tokens, variables), minimum_binding_power, variables)
+  end
+
+  defp infix(left, tokens, minimum_binding_power, variables) do
     case infix_operator(tokens, variables) do
       {:ok, operator, {left_binding_power, right_binding_power}, rest}
       when left_binding_power >= minimum_binding_power ->
@@ -423,7 +450,8 @@ defmodule LocalizePad.Parser do
              :money,
              :currency,
              :tax,
-             :calendar
+             :calendar,
+             :preference
            ] ->
         true
 

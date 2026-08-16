@@ -53,9 +53,13 @@ config :tailwind,
   ]
 
 # Configure Elixir's Logger
+# `:domain` so that locale provisioning at boot is attributable in the log —
+# `LocalizePad.Locales.ensure_downloaded/0` tags its lines `[:localize]`, and
+# without the key here the tag is dropped and a failed download reads like an
+# unattributed error.
 config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",
-  metadata: [:request_id]
+  metadata: [:request_id, :domain]
 
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
@@ -68,12 +72,18 @@ config :phoenix, :json_library, Jason
 # resolves correctly in mix tasks, `mix test` and releases alike — see the
 # Localize README on why a bare relative `:locale_cache_dir` is refused.
 #
-# `:supported_locales` is the set the sheet's locale picker offers. `:en` is the
+# `:supported_locales` is the set whose CLDR data is downloaded. `:en` is the
 # starting point; `:de`, `:fr`, `:es` and `:ja` are the M6 proof locales.
+#
+# `en-AU` and `en-GB` are here because a territory only changes an answer if its
+# data was fetched. Without them CLDR resolves both to `en` and hands back US
+# conventions — `3/4/2026` reads as March 4 rather than 3 April, and formats
+# come back as `4/3/26`. That is a wrong answer, not a missing feature, and it
+# is invisible: the locale picker still says `en-AU`.
 config :localize,
   otp_app: :localize_pad,
   default_locale: :en,
-  supported_locales: [:en, :de, :fr, :es, :ja]
+  supported_locales: [:en, :"en-AU", :"en-GB", :de, :fr, :es, :ja]
 
 # Currency conversion arrives in M4. Until then there is no exchange-rate
 # retriever in the supervision tree, so tell Money not to start one implicitly —

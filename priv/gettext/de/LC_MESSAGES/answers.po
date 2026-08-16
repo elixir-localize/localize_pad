@@ -26,3 +26,8 @@ msgstr "ja"
 msgid "{$count} dates · {$listed} …"
 msgstr ""
 ".input {$count :number}\n.match $count\none {{{$count} Termin · {$listed} …}}\n*   {{{$count} Termine · {$listed} …}}\n"
+
+#: lib/localize_pad/refusal.ex:48
+#, elixir-autogen, icu-format
+msgid "no rate declared — add {$example}"
+msgstr "kein Satz angegeben — {$example} hinzufügen"

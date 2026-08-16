@@ -87,10 +87,20 @@ defmodule LocalizePad.MoneyTest do
       assert answer("2 cup to mL") == "473.176473 milliliters"
     end
 
-    test "the dollar sign follows the reader's locale" do
+    test "the dollar sign follows the reader's locale, where the reader has a dollar" do
       assert LocalizePad.Currency.resolve("$", :en) == {:ok, :USD}
       assert LocalizePad.Currency.resolve("$", :"en-AU") == {:ok, :AUD}
-      assert LocalizePad.Currency.resolve("$", :de) == {:ok, :EUR}
+      assert LocalizePad.Currency.resolve("$", :"en-CA") == {:ok, :CAD}
+    end
+
+    test "and means a dollar where the reader's money is not one" do
+      # A German or British reader who types `$300` means dollars — their own
+      # money is written `€` and `£`, and they would have typed that. Reading
+      # `$` as the local currency there answers a different number, which is
+      # worse than answering the wrong dollar.
+      assert LocalizePad.Currency.resolve("$", :de) == {:ok, :USD}
+      assert LocalizePad.Currency.resolve("$", :"en-GB") == {:ok, :USD}
+      assert LocalizePad.Currency.resolve("$", :ja) == {:ok, :USD}
     end
   end
 
@@ -170,32 +180,61 @@ defmodule LocalizePad.MoneyTest do
   end
 
   describe "sales tax" do
+    # There is no configured rate and no default one, so every assertion here
+    # declares the rate it is written against — the same way a sheet must.
+    defp taxed(line, rate \\ "15%") do
+      [_declaration, answer] = Sheet.new("VAT = #{rate}\n#{line}", locale: :en).lines
+      answer.formatted || answer.error
+    end
+
     # The whole reason sales tax is not just a percentage: taking tax *off* a
     # price is division by 1.15, not subtraction of 15%. Subtracting would give
     # $255 — wrong by $5.87, and wrong in a way nobody notices until an invoice
     # disagrees.
     test "removing tax divides rather than subtracts" do
-      assert answer("$300 - VAT") == "$260.87"
-      refute answer("$300 - VAT") == "$255.00"
+      assert taxed("$300 - VAT") == "$260.87"
+      refute taxed("$300 - VAT") == "$255.00"
     end
 
     test "adding tax to a net price" do
-      assert answer("$300 + VAT") == "$345.00"
+      assert taxed("$300 + VAT") == "$345.00"
     end
 
     test "on treats the amount as net, of treats it as gross" do
       # Both readings are in use, so the preposition has to carry the
       # distinction — which is why it survives into the AST.
-      assert answer("VAT on $300") == "$45.00"
-      assert answer("VAT of $300") == "$39.13"
+      assert taxed("VAT on $300") == "$45.00"
+      assert taxed("VAT of $300") == "$39.13"
     end
 
     test "off recovers the net price inside a gross one" do
-      assert answer("VAT off $300") == "$260.87"
+      assert taxed("VAT off $300") == "$260.87"
     end
 
-    test "GST names the same tax" do
-      assert answer("$300 + GST") == "$345.00"
+    test "GST is recognised too, and declared the same way" do
+      [_declaration, answer] = Sheet.new("GST = 10%\n$300 + GST", locale: :en).lines
+
+      assert answer.formatted == "$330.00"
+    end
+
+    test "a rate the sheet never declared is refused, not guessed" do
+      # This is the whole point of having no default. A rate the app invents is
+      # wrong for most of the world, and at zero it answers `$0.00` — which
+      # reads like a total rather than like a missing declaration.
+      assert answer("VAT on $300") == {:undeclared_rate, "VAT"}
+      assert answer("$300 + VAT") == {:undeclared_rate, "VAT"}
+    end
+
+    test "the declaration sets the rate, it does not change the question" do
+      # `VAT on $300` is the tax itself. `25% on $300` is the grossed-up total.
+      # Binding the name to a plain percentage would silently swap them.
+      assert taxed("VAT on $300", "25%") == "$75.00"
+      assert answer("25% on $300") == "$375.00"
+    end
+
+    test "each sheet states its own rate" do
+      assert taxed("VAT on $300", "20%") == "$60.00"
+      assert taxed("VAT on $300", "8.25%") == "$24.75"
     end
   end
 

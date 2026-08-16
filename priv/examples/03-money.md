@@ -15,6 +15,14 @@ Locale: `en`
 
 # Tax, added or removed
 
+// The rate is yours to state. There is no
+// default and no setting — rates differ by
+// country and by US state, so a sheet carries
+// its own and means the same thing to whoever
+// opens it. Change this line and every answer
+// below it follows.
+VAT = 15%
+
 // `on` adds tax to a net figure. `of` takes it
 // out of a gross one. They are different
 // questions and they give different answers.

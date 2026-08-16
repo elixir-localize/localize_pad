@@ -10,6 +10,8 @@ The concept is [Soulver](https://soulver.app)'s. What makes this one different i
 
 * **It reads your language, it doesn't merely format in it.** `1.234,5 Meter in Kilometer`, `20 % von 700`, `10 juin + 3 semaines`. Switching locale re-parses *and* re-formats the whole sheet, across 500+ CLDR locales and 18 calendars.
 
+* **It knows which English.** The locale is a language tag, so `3/4/2026` is 3 April to an `en-AU` reader and March 4 to an `en-US` one, and `42.195 km in local units` answers in kilometres or miles accordingly. `en-GB` gets miles and keeps Celsius, because that is what Britain actually does — the answer is CLDR's, not a metric/imperial flag.
+
 * **It answers the temporal questions people actually get stuck on.** Not just "what date is three weeks from Tuesday", but "when are London, New York and Tokyo all at work" (they never are), "every Friday the 13th from 2027", "when am I free on Tuesday given this `.ics`", "is Friday a workday" (yes in the US, no in Saudi Arabia).
 
 See [plans/localize_pad.md](plans/localize_pad.md) for the full design and delivery plan.
@@ -71,6 +73,12 @@ Elixir 1.17+ on **OTP 27 or later** — Tempo does not support OTP 26. The canon
 ## Configuration
 
 Locale behaviour is configured in `config/config.exs` under `:localize`. The application-wide default locale can be overridden at deploy time with the `LOCALIZE_DEFAULT_LOCALE` environment variable.
+
+`:supported_locales` is a list of language tags, not languages, and the distinction is the product: `en-AU` and `en-US` read `3/4/2026` as two different days, so "English" is not an answer to which English. A territory only changes an answer if its data was fetched, and a tag whose data is missing falls back silently — CLDR resolves `en-AU` to `en` and hands back US conventions with nothing on screen to say so. So the picker offers exactly the tags in that list, and typing any other tag resolves through CLDR's own inheritance, which is usually right: `en-IE` inherits `en-GB` rather than `en`.
+
+Locale data is downloaded rather than vendored, and the release does not carry it — a production node fetches its own set at boot, so adding a locale is a config change and a restart rather than a rebuild. A locale that cannot be fetched is logged and dropped from the picker instead of being served with another language's rules.
+
+Sales tax has no configured rate and no default. A sheet declares its own with a line like `VAT = 15%`, and until it does, tax phrases refuse rather than answering. Rates differ by country and by US state, so any value the app picked would be wrong for most people — and wrong quietly, since `$0.00` reads like a total rather than like a missing setting. It also keeps a shared pad meaning the same thing to whoever opens it.
 
 Currency conversion needs an [Open Exchange Rates](https://openexchangerates.org) app id, set via `OPEN_EXCHANGE_RATES_APP_ID`. Without it the app runs normally; currency *conversion* is simply unavailable.
 

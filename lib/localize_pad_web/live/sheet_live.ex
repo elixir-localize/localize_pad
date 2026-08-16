@@ -69,6 +69,13 @@ defmodule LocalizePadWeb.SheetLive do
   phrase. That is the product, so it lives in the header rather than in a
   settings page.
 
+  It takes a language tag rather than a language, and it is a combobox rather
+  than a menu, because "English" is not an answer to *which* English: `3/4/2026`
+  is March in `en-US` and April in `en-AU`. The suggestions cover the tags whose
+  data was downloaded; anything else valid can be typed. A tag this application
+  cannot honour leaves the sheet as it was and says so — see
+  `LocalizePad.Locales`.
+
   ## Where a sheet lives
 
   In the browser. The sheet is held in `localStorage` and restored on mount,
@@ -138,7 +145,7 @@ defmodule LocalizePadWeb.SheetLive do
 
   use LocalizePadWeb, :live_view
 
-  alias LocalizePad.{Examples, Highlight, Share, Sheet, Timeline, Value}
+  alias LocalizePad.{Examples, Highlight, Locales, Refusal, Share, Sheet, Timeline, Value}
 
   @sample """
   # A first sheet
@@ -172,7 +179,8 @@ defmodule LocalizePadWeb.SheetLive do
      |> assign(:topic, topic)
      |> assign(:locale, locale)
      |> assign(:source, @sample)
-     |> assign(:locale_options, locale_options())
+     |> assign(:locale_options, Locales.suggestions())
+     |> assign(:locale_error, nil)
      |> assign(:examples, Examples.all())
      |> assign(:selected, nil)
      |> recalculate()}
@@ -280,22 +288,32 @@ defmodule LocalizePadWeb.SheetLive do
   end
 
   def handle_event("set_locale", %{"locale" => locale}, socket) do
-    case Localize.validate_locale(locale) do
+    case Locales.resolve(locale) do
       {:ok, language_tag} ->
         Localize.put_locale(language_tag)
 
         {:noreply,
          socket
-         |> assign(:locale, language_tag.cldr_locale_id)
+         |> assign(:locale, language_tag)
+         |> assign(:locale_error, nil)
          |> recalculate()
          |> publish()}
 
-      # An unknown locale simply leaves the sheet as it was. Nothing the picker
-      # can send should be able to break a document.
-      {:error, _reason} ->
-        {:noreply, socket}
+      # A tag we cannot honour leaves the sheet exactly as it was, and says so
+      # rather than falling back. Reading a German sheet with English rules
+      # turns `1.234,5` into a different number and answers it confidently —
+      # the field is half-typed most of the time, so silence here would be
+      # indistinguishable from a locale that simply did nothing.
+      {:error, reason} ->
+        {:noreply, assign(socket, :locale_error, locale_error(reason))}
     end
   end
+
+  defp locale_error({:unsupported, language}) do
+    "No locale data for #{language} — the sheet would be read in another language"
+  end
+
+  defp locale_error(:unknown), do: "Not a language tag"
 
   @impl Phoenix.LiveView
   def handle_info({:sheet, from, source, locale}, socket) when from != self() do
@@ -414,25 +432,10 @@ defmodule LocalizePadWeb.SheetLive do
     end
   end
 
+  # The whole language tag, which is what a sheet is evaluated against — see
+  # `LocalizePad.Locales` for why nothing here reduces it to a name.
   defp current_locale do
-    Localize.get_locale().cldr_locale_id
-  end
-
-  # Each locale is named in its own language — "Deutsch", not "German". A
-  # picker is read by the person who wants that locale, and they should be able
-  # to find it without first knowing what English calls it.
-  #
-  # `supported_locales/0` always returns a list: with `:supported_locales`
-  # unset it falls back to every locale CLDR knows, which would put ~766
-  # entries in this select. The configured list in `config/config.exs` is what
-  # keeps it to five.
-  defp locale_options do
-    Enum.map(Localize.supported_locales(), fn locale ->
-      case Localize.Language.display_name(to_string(locale), locale: locale) do
-        {:ok, name} -> {String.capitalize(name), to_string(locale)}
-        {:error, _reason} -> {to_string(locale), to_string(locale)}
-      end
-    end)
+    Localize.get_locale()
   end
 
   @impl Phoenix.LiveView
@@ -508,22 +511,31 @@ defmodule LocalizePadWeb.SheetLive do
             Download
           </button>
 
-          <form phx-change="set_locale">
+          <%!-- A combobox rather than a select, because the set of useful
+                locales is not a list anyone can enumerate. The suggestions
+                cover the common cases; the field accepts any valid BCP 47
+                tag, which is the only way `en-AU` can be asked for. --%>
+          <form phx-change="set_locale" phx-submit="set_locale">
             <label class="flex items-center gap-2 text-sm">
               <span class="opacity-60">Locale</span>
-              <select
+              <input
                 name="locale"
-                class="select select-sm select-bordered"
-                aria-label="Sheet locale"
-              >
-                <option
-                  :for={{name, code} <- @locale_options}
-                  value={code}
-                  selected={code == to_string(@locale)}
-                >
-                  {name}
-                </option>
-              </select>
+                list="locale-options"
+                value={to_string(@locale)}
+                phx-debounce="500"
+                spellcheck="false"
+                autocapitalize="none"
+                size="8"
+                class={[
+                  "input input-sm input-bordered w-28 font-mono",
+                  @locale_error && "input-error"
+                ]}
+                aria-label="Sheet locale, as a language tag"
+                title={@locale_error || "A language tag — en, en-AU, de-AT, fr-CA, ja"}
+              />
+              <datalist id="locale-options">
+                <option :for={{name, code} <- @locale_options} value={code}>{name}</option>
+              </datalist>
             </label>
           </form>
         </div>
@@ -576,9 +588,19 @@ defmodule LocalizePadWeb.SheetLive do
                 line.error && "opacity-40",
                 line.kind in [:heading, :comment] && "opacity-30"
               ]}
-              title={line.error && inspect(line.error)}
+              title={
+                line.error &&
+                  (Refusal.message(line.error, locale: @locale) || inspect(line.error))
+              }
             >
-              {line.formatted || raw("&nbsp;")}
+              <%= cond do %>
+                <% line.formatted -> %>
+                  {line.formatted}
+                <% message = line.error && Refusal.message(line.error, locale: @locale) -> %>
+                  <span class="italic opacity-70">{message}</span>
+                <% true -> %>
+                  {raw("&nbsp;")}
+              <% end %>
             </div>
           </div>
         </div>

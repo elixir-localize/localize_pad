@@ -329,14 +329,27 @@ defmodule LocalizePad.TemporalTest do
     # The clearest single case of the two halves of the product being the same
     # thing. Soulver hardcodes Monday to Friday; CLDR knows better, Tempo reads
     # it, and the territory comes from the sheet's own locale.
+    # `en-SA` rather than `ar-SA`, and an ISO date rather than a US-formatted
+    # one, because the sheet text here is English: the tag should say so, and
+    # the date should be the one form every English territory reads alike.
+    # `August 21, 2026` is not — an `en-SA` reader writes `21 August 2026`, and
+    # asking them to read the American order to prove a point about their
+    # working week would be testing the wrong thing.
     test "Friday is a workday in the US and not in Saudi Arabia" do
-      assert answer("is Friday, August 21, 2026 a workday", locale: :en) == "yes"
-      assert answer("is Friday, August 21, 2026 a workday", locale: :"ar-SA") == "no"
+      assert answer("is 2026-08-21 a workday", locale: :en) == "yes"
+      assert answer("is 2026-08-21 a workday", locale: "en-SA") == "no"
     end
 
     test "Sunday is the mirror image" do
-      assert answer("is Sunday, August 23, 2026 a workday", locale: :en) == "no"
-      assert answer("is Sunday, August 23, 2026 a workday", locale: :"ar-SA") == "yes"
+      assert answer("is 2026-08-23 a workday", locale: :en) == "no"
+      assert answer("is 2026-08-23 a workday", locale: "en-SA") == "yes"
+    end
+
+    test "a question about something that is not a day is refused, not raised" do
+      # `Tempo.workday?/2` raises on anything coarser than a day, and this sits
+      # on the render path — a line somebody could plausibly type must not be
+      # able to take the page down.
+      assert answer("is August 2026 a workday", locale: :en) == :not_a_day
     end
 
     test "counting working days between two dates" do

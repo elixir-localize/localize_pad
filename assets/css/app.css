@@ -251,6 +251,7 @@
 .tok-unit,
 .tok-currency,
 .tok-calendar,
+.tok-preference,
 .tok-tax {
   color: var(--color-secondary);
 }

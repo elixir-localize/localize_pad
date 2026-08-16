@@ -32,10 +32,10 @@ defmodule LocalizePad.Sheet do
   """
 
   alias Localize.Unit
-  alias LocalizePad.{Evaluator, Line, Value}
+  alias LocalizePad.{Evaluator, Line, Locales, Value}
 
   @type t :: %__MODULE__{
-          locale: atom(),
+          locale: Locales.tag(),
           lines: [Line.t()]
         }
 
@@ -70,7 +70,7 @@ defmodule LocalizePad.Sheet do
   """
   @spec new(String.t(), keyword()) :: t()
   def new(source, options \\ []) when is_binary(source) do
-    locale = Keyword.get_lazy(options, :locale, &Localize.get_locale/0)
+    locale = options |> Keyword.get_lazy(:locale, &Localize.get_locale/0) |> resolve_locale()
 
     source
     |> String.split("\n")
@@ -357,8 +357,9 @@ defmodule LocalizePad.Sheet do
   ### Examples
 
       iex> markdown = LocalizePad.Sheet.new("19 + 22", locale: :en) |> LocalizePad.Sheet.to_markdown()
-      iex> LocalizePad.Sheet.from_markdown(markdown)
-      {:ok, "19 + 22", :en}
+      iex> {:ok, source, locale} = LocalizePad.Sheet.from_markdown(markdown)
+      iex> {source, to_string(locale)}
+      {"19 + 22", "en"}
 
       iex> LocalizePad.Sheet.from_markdown("2 + 2\\n3 * 3")
       {:ok, "2 + 2\\n3 * 3", nil}
@@ -367,7 +368,7 @@ defmodule LocalizePad.Sheet do
       {:error, :empty}
 
   """
-  @spec from_markdown(String.t()) :: {:ok, String.t(), atom() | nil} | {:error, :empty}
+  @spec from_markdown(String.t()) :: {:ok, String.t(), Locales.tag() | nil} | {:error, :empty}
   def from_markdown(markdown) when is_binary(markdown) do
     source =
       markdown
@@ -405,10 +406,28 @@ defmodule LocalizePad.Sheet do
     |> String.trim_trailing()
   end
 
+  # A sheet holds a language tag, not a name for one. Callers pass `:en` or
+  # `"en-AU"` and that is fine at the door; past it, every line is evaluated
+  # against a resolved tag so nothing downstream has to guess which English.
+  #
+  # A locale that cannot be resolved falls back to the current one rather than
+  # raising. `new/2` is on the render path, and a bad `:locale` option must not
+  # be able to take a page down.
+  defp resolve_locale(locale) do
+    case Locales.resolve(locale) do
+      {:ok, language_tag} -> language_tag
+      {:error, _reason} -> Localize.get_locale()
+    end
+  end
+
+  # The whole tag, so an exported `en-AU` sheet reopens as `en-AU` rather than
+  # as some other English. A tag this cannot honour is treated as unstated —
+  # the sheet then opens in the reader's own locale, which is visible in the
+  # header, rather than in a language it silently substituted.
   defp stated_locale(markdown) do
     with [_whole, name] <- Regex.run(~r/^Locale:\s*`([^`]+)`/m, markdown),
-         {:ok, language_tag} <- Localize.validate_locale(name) do
-      language_tag.cldr_locale_id
+         {:ok, tag} <- Locales.resolve(name) do
+      tag
     else
       _unstated -> nil
     end

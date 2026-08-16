@@ -26,3 +26,8 @@ msgstr "はい"
 msgid "{$count} dates · {$listed} …"
 msgstr ""
 "{$count}件 · {$listed} …"
+
+#: lib/localize_pad/refusal.ex:48
+#, elixir-autogen, icu-format
+msgid "no rate declared — add {$example}"
+msgstr "税率が未設定です — {$example} を追加してください"

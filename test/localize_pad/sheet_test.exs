@@ -249,7 +249,8 @@ defmodule LocalizePad.SheetTest do
       original = "# Trip\n\nBreakfast: 19 + 22\nhotel = 120\nhotel * 3\n// a note\nsum"
       markdown = original |> Sheet.new(locale: :en) |> Sheet.to_markdown()
 
-      assert Sheet.from_markdown(markdown) == {:ok, original, :en}
+      assert {:ok, ^original, locale} = Sheet.from_markdown(markdown)
+      assert to_string(locale) == "en"
     end
 
     test "importing and exporting again does not accumulate" do
@@ -265,8 +266,8 @@ defmodule LocalizePad.SheetTest do
         {back, locale}
       end
 
-      assert {once, :en} = cycle.(original)
-      assert {twice, :en} = cycle.(once)
+      assert {once, _locale} = cycle.(original)
+      assert {twice, _locale} = cycle.(once)
       assert once == original
       assert twice == original
     end
@@ -275,7 +276,8 @@ defmodule LocalizePad.SheetTest do
       original = "19 + 22 // paid cash"
       markdown = original |> Sheet.new(locale: :en) |> Sheet.to_markdown()
 
-      assert {:ok, ^original, :en} = Sheet.from_markdown(markdown)
+      assert {:ok, ^original, locale} = Sheet.from_markdown(markdown)
+      assert to_string(locale) == "en"
     end
 
     test "a file with no fence is taken whole" do

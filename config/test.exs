@@ -17,11 +17,6 @@ config :localize_pad, LocalizePad.Repo,
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: System.schedulers_online() * 2
 
-# A sales tax rate for the suite. There is no correct default in the app
-# itself — rates vary by country and, in the US, by state — so the tests state
-# the one they assert against.
-config :localize_pad, sales_tax: [name: "VAT", rate: 15]
-
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
 config :localize_pad, LocalizePadWeb.Endpoint,

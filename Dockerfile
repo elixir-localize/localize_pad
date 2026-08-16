@@ -75,10 +75,14 @@ COPY lib lib
 # Compile the release
 RUN mix compile
 
-# CLDR locale data, downloaded into this app's own priv — hence after compile,
-# unlike the dictionaries above. Without it every locale falls back and the
-# whole premise of the app goes with it.
-RUN mix localize.download_locales
+# CLDR locale data is deliberately *not* fetched here. It is fetched by the
+# node at boot instead — see `LocalizePad.Locales.ensure_downloaded/0` — so
+# that the set follows `:supported_locales` at run time rather than being
+# frozen into the image, and so that a locale added to the config needs a
+# restart rather than a rebuild.
+#
+# This is the opposite choice to the word-break dictionaries above, which live
+# in a dependency's priv and never change.
 
 COPY assets assets
 

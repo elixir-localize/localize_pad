@@ -25,13 +25,20 @@ defmodule LocalizePad.SalesTax do
   net, the second as gross. Both readings are in use, and Soulver documents
   both, so the preposition has to carry the distinction.
 
-  ## Configuration
+  ## The rate is declared in the sheet
 
-      config :localize_pad, sales_tax: [name: "VAT", rate: 15]
+      VAT = 25%
+      VAT on $300
 
-  There is no correct default. Rates vary by country and, in the United
-  States, by state — which is why Soulver asks its American users to set it
-  themselves rather than guessing from geolocation.
+  There is no default rate and no configured one. Rates vary by country and,
+  in the United States, by state, so any value the app picked would be wrong
+  for most people — and wrong silently, since `$0.00` reads like an answer
+  rather than like a missing setting.
+
+  Nor does the rate belong in application config, which would make the same
+  sheet mean different things on different deployments. A pad is shared by
+  URL and opened by somebody else; it has to carry everything its answers
+  depend on. Until a line declares the rate, tax phrases refuse.
 
   """
 
@@ -39,38 +46,32 @@ defmodule LocalizePad.SalesTax do
 
   defstruct [:name, :rate]
 
-  @type t :: %__MODULE__{name: String.t(), rate: Percentage.t()}
-
-  @default_name "VAT"
-  @default_rate 0
+  @type t :: %__MODULE__{name: String.t(), rate: Percentage.t() | nil}
 
   @doc """
-  Returns the configured sales tax.
+  Returns the tax a word names, with no rate until the sheet declares one.
+
+  ### Arguments
+
+  * `word` - the word naming the tax, as written.
 
   ### Returns
 
-  * A `t:LocalizePad.SalesTax.t/0`. With nothing configured the rate is zero,
-    so tax phrases evaluate to a no-op rather than failing — a sheet written
-    before the rate was set still reads sensibly.
+  * A `t:LocalizePad.SalesTax.t/0` whose `:rate` is `nil`.
 
   ### Examples
 
-      iex> LocalizePad.SalesTax.configured().name
-      "VAT"
+      iex> LocalizePad.SalesTax.named("VAT")
+      %LocalizePad.SalesTax{name: "VAT", rate: nil}
 
   """
-  @spec configured() :: t()
-  def configured do
-    settings = Application.get_env(:localize_pad, :sales_tax, [])
-
-    %__MODULE__{
-      name: Keyword.get(settings, :name, @default_name),
-      rate: Percentage.new(Keyword.get(settings, :rate, @default_rate))
-    }
+  @spec named(String.t()) :: t()
+  def named(word) when is_binary(word) do
+    %__MODULE__{name: word, rate: nil}
   end
 
   @doc """
-  Whether a word names the configured sales tax.
+  Whether a word names a sales tax.
 
   ### Arguments
 
@@ -91,10 +92,7 @@ defmodule LocalizePad.SalesTax do
   """
   @spec names_tax?(String.t()) :: boolean()
   def names_tax?(word) when is_binary(word) do
-    downcased = String.downcase(word)
-
-    downcased in ["vat", "gst", "sales tax"] or
-      downcased == String.downcase(configured().name)
+    String.downcase(word) in ["vat", "gst", "sales tax"]
   end
 
   @doc """
@@ -118,7 +116,7 @@ defmodule LocalizePad.SalesTax do
 
   """
   @spec gross_multiplier(t()) :: float()
-  def gross_multiplier(%__MODULE__{rate: rate}) do
+  def gross_multiplier(%__MODULE__{rate: %Percentage{} = rate}) do
     1 + Percentage.to_decimal(rate)
   end
 end

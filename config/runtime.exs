@@ -24,6 +24,13 @@ config :localize_pad, LocalizePadWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
 if config_env() == :prod do
+  # The release carries no CLDR locale data, so each node fetches its own set
+  # at boot. Doing it here rather than in the image keeps the data current with
+  # `:supported_locales` — adding `en-GB` is then a config change and a
+  # restart, not a rebuild — and keeps the image from going stale against a
+  # newer CLDR. See `LocalizePad.Locales.ensure_downloaded/0`.
+  config :localize_pad, download_locales_on_start: true
+
   # A sheet lives in the browser and in the links people share; nothing reads
   # or writes the database yet. Postgres arrives with accounts, so a deployment
   # without one is a real configuration rather than a mistake — the generated

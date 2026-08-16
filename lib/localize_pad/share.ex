@@ -51,11 +51,12 @@ defmodule LocalizePad.Share do
   ### Examples
 
       iex> encoded = LocalizePad.Share.encode("19 + 22", :en)
-      iex> LocalizePad.Share.decode(encoded)
-      {:ok, "19 + 22", :en}
+      iex> {:ok, source, locale} = LocalizePad.Share.decode(encoded)
+      iex> {source, to_string(locale)}
+      {"19 + 22", "en"}
 
   """
-  @spec encode(String.t(), atom()) :: String.t()
+  @spec encode(String.t(), LocalizePad.Locales.tag() | String.t() | atom()) :: String.t()
   def encode(source, locale) when is_binary(source) do
     payload = to_string(locale) <> @separator <> source
 
@@ -85,13 +86,18 @@ defmodule LocalizePad.Share do
       :error
 
   """
-  @spec decode(String.t()) :: {:ok, String.t(), atom()} | :error
+  @spec decode(String.t()) :: {:ok, String.t(), LocalizePad.Locales.tag()} | :error
   def decode(encoded) when is_binary(encoded) do
+    # `LocalizePad.Locales.resolve/1` rather than `Localize.validate_locale/1`:
+    # the tag has to survive whole, because a sheet shared as `en-AU` read back
+    # as `en` answers `42.195 km to miles` for a reader who never asked, and a
+    # language with no data has to be refused rather than quietly read in
+    # another one.
     with {:ok, compressed} <- Base.url_decode64(encoded, padding: false),
          {:ok, payload} <- gunzip(compressed),
          [locale, source] <- String.split(payload, @separator, parts: 2),
-         {:ok, language_tag} <- Localize.validate_locale(locale) do
-      {:ok, source, language_tag.cldr_locale_id}
+         {:ok, tag} <- LocalizePad.Locales.resolve(locale) do
+      {:ok, source, tag}
     else
       _not_a_sheet -> :error
     end
