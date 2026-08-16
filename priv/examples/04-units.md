@@ -64,9 +64,11 @@ Locale: `en`
 
 // What neither can know is what the number is
 // *for*. 70 kg is stone if it is a person and
-// pounds if it is a sack of cement; a litre is
-// quarts if you are drinking it. Say so and the
-// answer changes.
+// pounds if it is a sack of cement. Litres could
+// be a drink, a dam, or someone's blood — so the
+// answer without a usage is deliberately the
+// plain one rather than a guess. Say what the
+// number is for and it changes.
 70 kg in preferred weight units
 1.8 m in preferred height units
 2 litres in preferred fluid units
