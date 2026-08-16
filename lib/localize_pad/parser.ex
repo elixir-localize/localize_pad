@@ -494,6 +494,18 @@ defmodule LocalizePad.Parser do
     end
   end
 
+  # `19-22`. The number scanner reads a hyphen between digits as a sign, so this
+  # arrives as two numbers, the second negative — and adding a negative is the
+  # subtraction the reader wrote. Without this the line had no reading at all,
+  # because two bare numbers side by side are not a product.
+  #
+  # Only when the number is *negative*: `19 22` stays two numbers, which is
+  # what lets a space-grouped `1 234,5` be one and `19 22` be two.
+  defp infix_operator([%Token{kind: :number, value: value} | _rest] = tokens, _variables)
+       when is_number(value) and value < 0 do
+    {:ok, :plus, Map.fetch!(@binding_powers, :plus), tokens}
+  end
+
   # Anything that could begin an operand, sitting next to the previous operand,
   # is implicit multiplication: `3 meters`, `kg m`, `2 (1 + 1)`.
   #

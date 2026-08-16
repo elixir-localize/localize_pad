@@ -9,7 +9,7 @@ Roughly **300 to 1**. CLDR supplies around fourteen thousand strings per locale;
 | | en | de | fr | es | ja |
 |---|---:|---:|---:|---:|---:|
 | CLDR strings supplied | 14,725 | 14,987 | 14,186 | 13,913 | 13,749 |
-| hand-authored input vocabulary | 54 | 65 | 49 | 52 | 47 |
+| hand-authored input vocabulary | 51 | 62 | 47 | 49 | 44 |
 | MF2 messages needing translation | 4 | 4 | 4 | 4 | 4 |
 
 ## What CLDR supplies, by area
@@ -36,14 +36,15 @@ Month names, weekday names, era markers, unit display names and their plurals, c
 | table | en | de | fr | es | ja |
 |---|---:|---:|---:|---:|---:|
 | operators — `to`, `per`, `of`, `after`, `before` | 20 | 13 | 8 | 8 | 10 |
-| recurrence — `every`, spelled ordinals, workday | 16 | 29 | 21 | 25 | 22 |
-| deictics — `today`, `tomorrow`, `yesterday`, `now` | 4 | 4 | 4 | 4 | 4 |
+| recurrence — `every`, workday, `last`, ordinal seeds | 16 | 29 | 21 | 25 | 22 |
 | preference targets — `preferred`, `local` | 3 | 7 | 7 | 6 | 3 |
-| usages — `height`, `weight`, `fluid`, `road` | 8 | 7 | 6 | 6 | 5 |
+| usages — `height`, `weight`, `fluid`, `currency` | 9 | 8 | 8 | 7 | 6 |
 | totals — `sum`, `summe`, `somme`, `合計` | 3 | 5 | 3 | 3 | 3 |
-| **total** | **54** | **65** | **49** | **52** | **47** |
+| **total** | **51** | **62** | **47** | **49** | **44** |
 
-Recurrence dominates outside English because inflection has to be listed rather than derived: a German ordinal agrees with its noun and a French one with its gender, so `erster`, `erste` and `ersten` are three entries for one idea. There is no morphological analyser, and adding one to save thirty words would be a far larger thing to get wrong.
+The deictics table is gone entirely — `today`, `tomorrow`, `yesterday` and `now` are read from CLDR's relative day and second fields.
+
+Recurrence is still the largest block, and most of it is now redundant rather than required. The spelled ordinals it contains are also *generated* from the locale's RBNF rule sets, and the generated set is the larger one; what only the table has is `last` — `letzte`, `dernier`, `última` — which is a position rather than an ordinal number, and the French synonym `second`. Pruning the rest would take German from 62 to roughly 47. The table is kept as a merge source for now so that a locale whose rule sets are missing still recognises its ordinals.
 
 ## What translation actually costs
 
@@ -61,30 +62,46 @@ Everything else the reader sees — every date, every unit name, every currency,
 
 That is what `3 Wochen`, `3 mètres` and `100キロメートル` resolve through, and it is why adding a locale does not mean writing down what a week is called.
 
-## Where the ratio breaks
+## What is now derived rather than written
 
-`LocalizePad.Temporal.Zones` carries **233 hand-authored English names** — 135 cities, 50 countries, 48 airports — and none of them are localized. That single table is more than four times the entire operator lexicon across all five languages, and it is the reason `9:00 Tokio in London` fails on a German sheet while `9:00 Tokyo in London` works.
+Every row here was authored once and is not any more. The counts are what each locale actually recognises at runtime.
 
-It is also avoidable. CLDR ships exemplar cities in the locale data already downloaded — German alone carries 418 of them — under `dates.time_zone_names.zone`. Reaching them turns the largest authored table in the application into derived data, and localizes zone names as a side effect.
+| derived at runtime | en | de | fr | es | ja |
+|---|---:|---:|---:|---:|---:|
+| currency names | 598 | 515 | 636 | 544 | 307 |
+| zone city names | 60 | 60 | 60 | 60 | 60 |
+| spelled ordinals | 6 | 28 | 17 | 24 | 12 |
+| relative day names | 4 | 6 | 6 | 6 | 6 |
+| day-of-week phrases | 2 | 1 | 1 | 1 | 2 |
 
-Two smaller authored lists are deliberate and stay: `Units.everyday?/1` holds 20 English words that are also unit names (`cup`, `stone`, `point`, `night`), and `LocalizePad.SalesTax` holds 3 (`vat`, `gst`, `sales tax`). Both are judgements about English prose rather than facts about units, which is why CLDR does not have them and should not.
+The reduction in authored words is modest — about five per locale — and it is the least interesting part. What changed is coverage.
+
+German ordinals went from 18 written forms to **28** recognised, because the RBNF sets carry the whole case paradigm and a hand list carried what somebody thought of: `erstem` and `erstes` are understood now and were not. French relative days gained `après-demain` and `avant-hier`, German `übermorgen` and `vorgestern` — words the table never had, which now resolve to the days they name. Zone names work in the reader's language, so `Tokio`, `Londres`, `Nueva York` and `東京` all find their clock. And currency conversion accepts any of five hundred–odd names per locale without a word of it being written down.
+
+`LocalizePad.Temporal.Zones` used to carry 233 hand-authored English names and now carries 20. Those 20 are not names CLDR could supply: `beijing` means `Asia/Shanghai`, `boston` means `America/New_York`, and `bogota` is what someone types when they will not reach for the accent. Which zones are worth naming is still a product judgement, and 60 identifiers say so; what they are *called* is CLDR's.
+
+## What stays authored, and why
+
+* **The operator lexicon** — `to`, `per`, `of`, `after`, `before`, `every`. CLDR has no table of the words people write when they mix arithmetic with prose, and this is the whole reason the project exists.
+
+* **Working-day words** — `Werktag`, `Arbeitstag`, `ouvrable`. CLDR models *which days are the weekend*, per territory, and the pad uses that; it does not name the concept. `Werktag` appears zero times in the entire `common/` tree.
+
+* **`last`** — `letzte`, `dernier`, `última`. A position, not an ordinal number; no rule set spells it.
+
+* **Preference and usage targets** — `preferred`, `local`, `height`, `weight`, `currency`. These name what the reader wants the answer expressed *in*, which is a question about this application rather than a fact about the language.
+
+* **Twenty everyday English words that are also units** (`cup`, `stone`, `point`, `night`) and three tax names (`vat`, `gst`, `sales tax`). Judgements about English prose, which is why CLDR does not have them and should not.
+
+* **28 airport codes.** Genuinely not CLDR data.
 
 ## What could still be derived
 
-Measured against CLDR 48.2.2 — none of this is authored today, and all of it could be.
+* **`yes` and `no`.** CLDR carries them as `<messages><yesstr>ja:j</yesstr>`, documented in tr35-general as a colon-separated list of recognised responses — richer than a single string, so it would give answer *matching* as well as rendering. Localize does not currently ship that section: the locale data has 22 top-level keys and `messages` is not among them. It would take the MF2 count from four to two.
 
-**Deictics are fully derivable.** `date_fields.day.standard.relative_ordinal` carries the relative day names per locale: German gives `heute`, `gestern`, `morgen` and also `vorgestern` and `übermorgen`, which the hand table does not have. That is 4 authored words per locale replaced by data, with better coverage than we wrote.
-
-**Spelled ordinals are derivable through RBNF**, but only by enumerating the inflected rule sets rather than calling `:spellout_ordinal`. German has `spellout_ordinal` plus `_m`, `_n`, `_r` and `_s`; French has masculine, feminine and their plurals; Spanish has no plain set at all, only `_masculine`, `_feminine` and `_masculine_adjective`. Generating 1..5 across a locale's sets reproduces almost the whole authored table, and for German produces 25 forms where 18 were written by hand — `erstem` and `erstes` are recognised by generation and missed today.
-
-What generation cannot supply is `last` — `letzte`, `dernier`, `última` — which is not an ordinal number but a positional word, and French `second`/`seconde` as a synonym for `deuxième`. Those stay authored, at roughly three words per locale instead of twenty.
-
-**Zone names are derivable** through `Localize.DateTime.Timezone.exemplar_city/3`, which implements the CLDR fallback: the locale's exemplar city, else the name derived from the IANA identifier. That retires the 233-name table described above.
-
-Taken together these would take the authored lexicon to roughly 45 words per locale from 50, while *widening* what each locale recognises — the reduction is smaller than the coverage gain, which is the more interesting number.
-
-**A Unicode inflector library is expected in September** and would act as a morphological analyser. That changes the calculus behind the inflection lists directly: `LocalizePad.Lexicon` currently notes that listing German case endings by hand is dull but correct, because "there is no morphological analyser here, and adding one to save thirty words would be a far larger thing to get wrong". With one available, the remaining inflected forms — and the recurrence table that is the largest authored block outside English — become generated rather than written.
+* **The remaining inflections.** A Unicode inflector library is expected in September and would act as a morphological analyser. That changes the calculus behind the last authored lists directly — the recurrence block is the largest of them, and most of what is left in it is inflection.
 
 ## Method
 
-The CLDR counts walk each locale's loaded data and count distinct binaries under the named key. The lexicon counts parse `lib/localize_pad/lexicon.ex` as an Elixir AST and count distinct string literals under each locale key, which is why they cannot be fooled by the nesting that an earlier regex-based count got wrong. Both are reproducible against the CLDR version the locale files were downloaded for; the figures above are CLDR 48.2.2 via `localize` 1.2.0.
+The CLDR counts walk each locale's loaded data and count distinct binaries under the named key. The authored counts parse `lib/localize_pad/lexicon.ex` as an Elixir AST and count distinct string literals under each locale key, which is why they cannot be fooled by the nesting that an earlier regex-based count got wrong. The derived counts are taken at runtime from the functions that build them, so they measure what a reader can actually type rather than what the source suggests.
+
+All are reproducible against the CLDR version the locale files were downloaded for; the figures above are CLDR 48.2.2 via `localize` 1.2.0.

@@ -53,7 +53,16 @@ defmodule LocalizePad.Tokenizer do
   # prefixes, hence "->" and "**" first. The `u` modifier is required: without
   # it the character class matches bytes, and `×` (two UTF-8 bytes) is torn in
   # half rather than recognised.
-  @operator_pattern ~r/(->|\*\*|[+\-*\/^()=,;×÷%])/u
+  # `-` is the one operator that is also a word-forming character. `well-being`
+  # is not a subtraction, and splitting it produced arithmetic from the wreckage
+  # — `well-being + 5` answered `-5`. So a hyphen is an operator unless it has
+  # a letter on both sides, which is the shape of a compound word rather than a
+  # calculation.
+  #
+  # Numbers never reach this test: `Localize.Number.Parser.scan/2` has already
+  # read `19-22` as two numbers and `après-demain` as one string, so the only
+  # hyphens left to judge are the ones inside text.
+  @operator_pattern ~r/(->|\*\*|[+*\/^()=,;×÷%]|(?<!\p{L})-|-(?!\p{L}))/u
 
   @operators %{
     "+" => :plus,

@@ -331,6 +331,22 @@ defmodule LocalizePad.Temporal.Zones do
   end
 
   @doc """
+  The zone identifiers this module will name.
+
+  ### Returns
+
+  * A list of IANA identifiers.
+
+  ### Examples
+
+      iex> "Asia/Tokyo" in LocalizePad.Temporal.Zones.zones()
+      true
+
+  """
+  @spec zones() :: [String.t()]
+  def zones, do: @zones
+
+  @doc """
   Returns every name this module recognises.
 
   Used by the tokenizer to match multi-word names such as `New York` before

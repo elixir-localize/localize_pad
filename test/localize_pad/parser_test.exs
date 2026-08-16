@@ -225,4 +225,47 @@ defmodule LocalizePad.ParserTest do
       assert reads("3 meters to feet") == "9.84252 feet"
     end
   end
+
+  describe "the hyphen is two characters in one" do
+    test "between letters it belongs to the word" do
+      # `well-being + 5` answered `-5`: the word was split into `well` minus
+      # `being`, and the arithmetic proceeded from the wreckage. Any hyphenated
+      # word did this.
+      assert reads("well-being + 5") == "5"
+      assert reads("19 + 22 for my mother-in-law") == "41"
+    end
+
+    test "which is what lets hyphenated vocabulary be read at all" do
+      [line] = LocalizePad.Sheet.new("après-demain", locale: "fr").lines
+
+      assert line.formatted ==
+               Localize.Date.to_string!(Date.add(Date.utc_today(), 2),
+                 locale: "fr",
+                 format: :long
+               )
+    end
+
+    test "everywhere else it is still a minus" do
+      assert reads("19 - 22") == "-3"
+      assert reads("-5 + 3") == "-2"
+      assert reads("3 - 2 - 1") == "0"
+    end
+
+    test "including between digits, however it is spaced" do
+      # The number scanner reads a hyphen between digits as a sign, so these
+      # arrive as two numbers with the second negative. Adding a negative is
+      # the subtraction that was written.
+      assert reads("19-22") == "-3"
+      assert reads("19 -22") == "-3"
+      assert reads("19- 22") == "-3"
+    end
+
+    test "and a date is still a date" do
+      assert reads("2026-07-03") == "July 3, 2026"
+    end
+
+    test "but two positive numbers are still not a product" do
+      assert reads("19 22") == {:unexpected, "22"}
+    end
+  end
 end
