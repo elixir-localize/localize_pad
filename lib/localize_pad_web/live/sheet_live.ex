@@ -659,25 +659,6 @@ defmodule LocalizePadWeb.SheetLive do
             answers.addEventListener("scroll", () => share(answers.scrollTop, null))
           }
 
-          // The text pane has no vertical scrollbar, so a wheel over it has
-          // nothing of its own to move. Without this, scrolling while reading
-          // the text does nothing and the sheet feels stuck.
-          textarea.addEventListener(
-            "wheel",
-            (event) => {
-              const furthest = textarea.scrollHeight - textarea.clientHeight
-              if (!event.deltaY || furthest <= 0) return
-
-              const next = Math.max(0, Math.min(furthest, textarea.scrollTop + event.deltaY))
-              if (next === textarea.scrollTop) return
-
-              event.preventDefault()
-              textarea.scrollTop = next
-              share(next, null)
-            },
-            {passive: false}
-          )
-
           this.handleEvent("scroll-sync", () => share(textarea.scrollTop, textarea.scrollLeft))
           share(textarea.scrollTop, textarea.scrollLeft)
         },

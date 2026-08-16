@@ -215,16 +215,17 @@
 }
 
 .sheet-input {
-  /* No vertical scrollbar here: the answer column has one, the two panes are
-     scroll-locked, and two bars for one document is one too many. Horizontal
-     stays — it is the only cue that a long line continues past the edge, and
-     the answer column cannot provide it because it never scrolls sideways.
+  /* No visible scrollbar here: the answer column has one, the two panes are
+     scroll-locked, and two bars for one document is one too many.
 
-     Hidden, not disabled. The textarea still scrolls to follow the caret and
-     still accepts a scrollTop; only the bar is gone. The wheel is the one
-     thing that stops working on its own, so the hook drives it. */
-  overflow-y: hidden;
-  overflow-x: auto;
+     The bar is hidden, the overflow is not. `overflow-y: hidden` would have
+     been the obvious way and is the wrong one — it stops the textarea
+     scrolling to reveal the caret in some browsers, and because the visible
+     text is the layer *beneath*, that shows up as typing that moves the cursor
+     and produces no glyph. Keeping `overflow: auto` leaves caret-reveal, the
+     wheel and keyboard paging exactly as the browser implements them, and
+     removes only the painted bar. */
+  scrollbar-width: none;
   position: relative;
   width: 100%;
   height: 100%;
@@ -234,6 +235,10 @@
      than hidden preserves selection highlighting and screen-reader access. */
   color: transparent;
   caret-color: var(--color-base-content);
+}
+
+.sheet-input::-webkit-scrollbar {
+  display: none;
 }
 
 .tok-number,
