@@ -38,82 +38,104 @@ defmodule LocalizePad.Temporal.Zones do
 
   # Cities large enough that someone writes them in a note expecting a clock
   # reading. Keyed by the lowercased name so lookup is case-insensitive.
-  @cities %{
-    "amsterdam" => "Europe/Amsterdam",
-    "athens" => "Europe/Athens",
-    "auckland" => "Pacific/Auckland",
-    "bangkok" => "Asia/Bangkok",
+  # The zones this module will name. Curation is the point: IANA ships 597, and
+  # taking the last segment of each would give `Truk`, `Thule` and `Yap` — words
+  # that collide with ordinary notes. Which zones are worth naming is a product
+  # judgement and stays here.
+  #
+  # What their *names* are is not. Every name comes from
+  # `Localize.DateTime.Timezone.exemplar_city/3`, which returns the locale's own
+  # exemplar city and falls back to deriving one from the identifier, exactly as
+  # TR35 prescribes. That is what makes `Tokio` work on a German sheet and
+  # `Londres` on a French one without a word of it being written down here.
+  @zones [
+    "Africa/Cairo",
+    "Africa/Johannesburg",
+    "Africa/Lagos",
+    "Africa/Nairobi",
+    "America/Argentina/Buenos_Aires",
+    "America/Bogota",
+    "America/Chicago",
+    "America/Denver",
+    "America/Lima",
+    "America/Los_Angeles",
+    "America/Mexico_City",
+    "America/New_York",
+    "America/Santiago",
+    "America/Sao_Paulo",
+    "America/Toronto",
+    "America/Vancouver",
+    "Asia/Bangkok",
+    "Asia/Dubai",
+    "Asia/Ho_Chi_Minh",
+    "Asia/Hong_Kong",
+    "Asia/Jakarta",
+    "Asia/Jerusalem",
+    "Asia/Karachi",
+    "Asia/Kolkata",
+    "Asia/Manila",
+    "Asia/Riyadh",
+    "Asia/Seoul",
+    "Asia/Shanghai",
+    "Asia/Singapore",
+    "Asia/Taipei",
+    "Asia/Tehran",
+    "Asia/Tokyo",
+    "Atlantic/Reykjavik",
+    "Australia/Brisbane",
+    "Australia/Melbourne",
+    "Australia/Perth",
+    "Australia/Sydney",
+    "Europe/Amsterdam",
+    "Europe/Athens",
+    "Europe/Berlin",
+    "Europe/Brussels",
+    "Europe/Copenhagen",
+    "Europe/Dublin",
+    "Europe/Helsinki",
+    "Europe/Istanbul",
+    "Europe/Kyiv",
+    "Europe/Lisbon",
+    "Europe/London",
+    "Europe/Madrid",
+    "Europe/Moscow",
+    "Europe/Oslo",
+    "Europe/Paris",
+    "Europe/Prague",
+    "Europe/Rome",
+    "Europe/Stockholm",
+    "Europe/Vienna",
+    "Europe/Warsaw",
+    "Europe/Zurich",
+    "Pacific/Auckland",
+    "Pacific/Honolulu"
+  ]
+
+  # Names that are not the zone's own city: another city sharing the zone, or a
+  # form written without its accents. CLDR cannot supply these because they are
+  # not what the zone is called — `Asia/Shanghai` is Shanghai, and somebody
+  # writing `Beijing` still means that clock.
+  @aliases %{
     "beijing" => "Asia/Shanghai",
-    "berlin" => "Europe/Berlin",
     "bogota" => "America/Bogota",
     "boston" => "America/New_York",
-    "brisbane" => "Australia/Brisbane",
-    "brussels" => "Europe/Brussels",
-    "buenos aires" => "America/Argentina/Buenos_Aires",
-    "cairo" => "Africa/Cairo",
-    "chicago" => "America/Chicago",
-    "copenhagen" => "Europe/Copenhagen",
     "dallas" => "America/Chicago",
     "delhi" => "Asia/Kolkata",
-    "denver" => "America/Denver",
-    "dubai" => "Asia/Dubai",
-    "dublin" => "Europe/Dublin",
     "frankfurt" => "Europe/Berlin",
     "hanoi" => "Asia/Ho_Chi_Minh",
-    "helsinki" => "Europe/Helsinki",
-    "hong kong" => "Asia/Hong_Kong",
-    "honolulu" => "Pacific/Honolulu",
     "houston" => "America/Chicago",
-    "istanbul" => "Europe/Istanbul",
-    "jakarta" => "Asia/Jakarta",
-    "johannesburg" => "Africa/Johannesburg",
-    "karachi" => "Asia/Karachi",
     "kiev" => "Europe/Kyiv",
-    "kyiv" => "Europe/Kyiv",
-    "lagos" => "Africa/Lagos",
-    "lima" => "America/Lima",
-    "lisbon" => "Europe/Lisbon",
-    "london" => "Europe/London",
-    "los angeles" => "America/Los_Angeles",
-    "madrid" => "Europe/Madrid",
-    "manila" => "Asia/Manila",
-    "melbourne" => "Australia/Melbourne",
-    "mexico city" => "America/Mexico_City",
     "miami" => "America/New_York",
     "milan" => "Europe/Rome",
     "montreal" => "America/Toronto",
-    "moscow" => "Europe/Moscow",
     "mumbai" => "Asia/Kolkata",
     "munich" => "Europe/Berlin",
-    "nairobi" => "Africa/Nairobi",
-    "new york" => "America/New_York",
-    "oslo" => "Europe/Oslo",
-    "paris" => "Europe/Paris",
-    "perth" => "Australia/Perth",
-    "prague" => "Europe/Prague",
-    "reykjavik" => "Atlantic/Reykjavik",
     "rio de janeiro" => "America/Sao_Paulo",
-    "riyadh" => "Asia/Riyadh",
-    "rome" => "Europe/Rome",
     "san francisco" => "America/Los_Angeles",
-    "santiago" => "America/Santiago",
     "sao paulo" => "America/Sao_Paulo",
     "seattle" => "America/Los_Angeles",
-    "seoul" => "Asia/Seoul",
-    "shanghai" => "Asia/Shanghai",
-    "singapore" => "Asia/Singapore",
-    "stockholm" => "Europe/Stockholm",
-    "sydney" => "Australia/Sydney",
-    "taipei" => "Asia/Taipei",
-    "tehran" => "Asia/Tehran",
     "tel aviv" => "Asia/Jerusalem",
-    "tokyo" => "Asia/Tokyo",
-    "toronto" => "America/Toronto",
-    "vancouver" => "America/Vancouver",
-    "vienna" => "Europe/Vienna",
-    "warsaw" => "Europe/Warsaw",
-    "wellington" => "Pacific/Auckland",
-    "zurich" => "Europe/Zurich"
+    "wellington" => "Pacific/Auckland"
   }
 
   # Countries, using the capital's zone where the country spans several — the
@@ -206,16 +228,49 @@ defmodule LocalizePad.Temporal.Zones do
       :error
 
   """
-  @spec resolve(String.t()) :: {:ok, t()} | :error
-  def resolve(name) when is_binary(name) do
+  @spec resolve(String.t(), Locales.locale()) :: {:ok, t()} | :error
+  def resolve(name, locale \\ :en) when is_binary(name) do
     key = name |> String.trim() |> String.downcase()
 
-    with :error <- Map.fetch(@cities, key),
+    # The reader's own names first, then the identifier-derived ones. A German
+    # sheet should understand `Tokio`, and it should not stop understanding
+    # `Tokyo` — the IANA name is what half the world's software prints, and
+    # somebody pasting a booking confirmation is not switching locale first.
+    with :error <- Map.fetch(cities(locale), key),
+         :error <- Map.fetch(cities(:en), key),
+         :error <- Map.fetch(@aliases, key),
          :error <- Map.fetch(@countries, key),
          :error <- Map.fetch(@airports, key) do
       via_calendrical(name)
     else
       {:ok, zone} -> {:ok, %__MODULE__{name: zone}}
+    end
+  end
+
+  # City name to zone, in the reader's language, built once per locale. English
+  # is not a special case: `London` reaches this the same way `Londres` does,
+  # because `exemplar_city/3` derives a name from the identifier wherever CLDR
+  # has none — which is most of them, English included.
+  defp cities(locale) do
+    id = Localize.Locale.cldr_locale_id_from(locale)
+    key = {__MODULE__, :cities, id}
+
+    case :persistent_term.get(key, nil) do
+      nil ->
+        built = build_cities(locale)
+        :persistent_term.put(key, built)
+        built
+
+      built ->
+        built
+    end
+  end
+
+  defp build_cities(locale) do
+    for zone <- @zones,
+        {:ok, city} <- [Localize.DateTime.Timezone.exemplar_city(zone, locale)],
+        into: %{} do
+      {city |> String.trim() |> String.downcase(), zone}
     end
   end
 
@@ -261,7 +316,7 @@ defmodule LocalizePad.Temporal.Zones do
     case :persistent_term.get(key, nil) do
       nil ->
         names =
-          [@cities, @countries, @airports]
+          [cities(:en), @aliases, @countries, @airports]
           |> Enum.flat_map(&Map.keys/1)
           |> Enum.uniq()
           |> Enum.sort_by(&(-String.length(&1)))

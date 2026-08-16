@@ -120,7 +120,7 @@ defmodule LocalizePad.Tokenizer do
       |> join_percentages()
       |> join_money(locale)
       |> mark_currencies(locale)
-      |> join_zones()
+      |> join_zones(locale)
       |> mark_calendars()
       |> mark_preferences(locale)
       |> promote_everyday()
@@ -558,23 +558,23 @@ defmodule LocalizePad.Tokenizer do
   # `New York` wins over a hypothetical `York`.
   @maximum_zone_words 3
 
-  defp join_zones([]), do: []
+  defp join_zones([], _locale), do: []
 
-  defp join_zones([%Token{kind: :word} | _rest] = tokens) do
-    case longest_zone(tokens) do
+  defp join_zones([%Token{kind: :word} | _rest] = tokens, locale) do
+    case longest_zone(tokens, locale) do
       {:ok, zone, source, consumed} ->
         token = Token.covering(Token.new(:zone, zone, source), Enum.take(tokens, consumed))
 
-        [token | tokens |> Enum.drop(consumed) |> join_zones()]
+        [token | tokens |> Enum.drop(consumed) |> join_zones(locale)]
 
       :error ->
-        [hd(tokens) | tokens |> tl() |> join_zones()]
+        [hd(tokens) | tokens |> tl() |> join_zones(locale)]
     end
   end
 
-  defp join_zones([token | rest]), do: [token | join_zones(rest)]
+  defp join_zones([token | rest], locale), do: [token | join_zones(rest, locale)]
 
-  defp longest_zone(tokens) do
+  defp longest_zone(tokens, locale) do
     words = tokens |> Enum.take(@maximum_zone_words) |> Enum.take_while(&(&1.kind == :word))
 
     words
@@ -583,7 +583,7 @@ defmodule LocalizePad.Tokenizer do
     |> Enum.find_value(:error, fn length ->
       source = words |> Enum.take(length) |> Enum.map_join(" ", & &1.source)
 
-      case Zones.resolve(source) do
+      case Zones.resolve(source, locale) do
         {:ok, zone} -> {:ok, zone, source, length}
         :error -> nil
       end
