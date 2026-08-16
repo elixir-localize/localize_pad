@@ -512,4 +512,40 @@ defmodule LocalizePadWeb.SheetLiveTest do
       refute html =~ "3 Meter<"
     end
   end
+
+  describe "hiding the locale control" do
+    test "takes the label and the field away together", %{conn: conn} do
+      {:ok, live, html} = live(conn, ~p"/")
+
+      assert html =~ "Sheet locale, as a language tag"
+
+      hidden = render_click(live, :toggle_locale_control, %{})
+
+      refute hidden =~ "Sheet locale, as a language tag"
+      refute hidden =~ ">Locale<"
+    end
+
+    test "and gives them back", %{conn: conn} do
+      {:ok, live, _html} = live(conn, ~p"/")
+
+      render_click(live, :toggle_locale_control, %{})
+      shown = render_click(live, :toggle_locale_control, %{})
+
+      assert shown =~ "Sheet locale, as a language tag"
+    end
+
+    test "without changing which locale the sheet is read in" do
+      # The point of the shortcut: the locale is still doing all of its work,
+      # there is simply nothing on screen admitting to it.
+      {:ok, live, _html} = live(build_conn(), ~p"/")
+
+      render_change(live, :set_locale, %{"locale" => "de"})
+      render_change(live, :edit, %{"source" => "1.234,5 + 0,5"})
+
+      hidden = render_click(live, :toggle_locale_control, %{})
+
+      refute hidden =~ "Sheet locale, as a language tag"
+      assert hidden =~ "1.235"
+    end
+  end
 end

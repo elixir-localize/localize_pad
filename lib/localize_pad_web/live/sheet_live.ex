@@ -182,6 +182,7 @@ defmodule LocalizePadWeb.SheetLive do
      |> assign(:locale_options, Locales.suggestions())
      |> assign(:locale_error, nil)
      |> assign(:prefer_local, false)
+     |> assign(:show_locale, true)
      |> assign(:examples, Examples.all())
      |> assign(:selected, nil)
      |> recalculate()}
@@ -286,6 +287,14 @@ defmodule LocalizePadWeb.SheetLive do
      socket
      |> assign(:selected, selected)
      |> assign(:detail, detail_for(socket.assigns.sheet, selected, socket.assigns.locale))}
+  end
+
+  # Ctrl-H hides the locale control, for showing an audience the sheet with no
+  # visible sign of what makes it work and asking whether they think it is
+  # localized. Nothing else changes: the locale is still doing everything it
+  # was, which is the point being made.
+  def handle_event("toggle_locale_control", _params, socket) do
+    {:noreply, assign(socket, :show_locale, not socket.assigns.show_locale)}
   end
 
   # A reading preference rather than an edit, so it is neither broadcast to the
@@ -563,7 +572,7 @@ defmodule LocalizePadWeb.SheetLive do
                 locales is not a list anyone can enumerate. The suggestions
                 cover the common cases; the field accepts any valid BCP 47
                 tag, which is the only way `en-AU` can be asked for. --%>
-          <form phx-change="set_locale" phx-submit="set_locale">
+          <form :if={@show_locale} phx-change="set_locale" phx-submit="set_locale">
             <label class="flex items-center gap-2 text-sm">
               <span class="opacity-60">Locale</span>
               <input
@@ -720,6 +729,7 @@ defmodule LocalizePadWeb.SheetLive do
           this.restore(textarea)
           this.persist(textarea)
           this.shortcuts(textarea)
+          this.presentationShortcut()
           this.syncScroll(textarea)
           this.openFile()
 
@@ -884,6 +894,27 @@ defmodule LocalizePadWeb.SheetLive do
           this.el.addEventListener("input", () => {
             window.localStorage.setItem(KEY, textarea.value)
           })
+        },
+
+        // Bound to the document, not the textarea: during a talk the focus is
+        // wherever the last click left it, and the shortcut has to work anyway.
+        //
+        // Ctrl and not ⌘: on macOS ⌘H hides the application, and the browser
+        // never sees it. The cost is that Ctrl-H no longer deletes backwards
+        // in the sheet, which is the emacs binding macOS text fields carry.
+        presentationShortcut() {
+          this.onCtrlH = (event) => {
+            if (event.ctrlKey && !event.metaKey && !event.altKey && event.key === "h") {
+              event.preventDefault()
+              this.pushEvent("toggle_locale_control", {})
+            }
+          }
+
+          document.addEventListener("keydown", this.onCtrlH)
+        },
+
+        destroyed() {
+          document.removeEventListener("keydown", this.onCtrlH)
         },
 
         shortcuts(textarea) {
