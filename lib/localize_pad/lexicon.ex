@@ -43,7 +43,17 @@ defmodule LocalizePad.Lexicon do
 
   alias LocalizePad.Locales
 
-  @type role :: :to | :per | :after | :before | :of | :off | :on | :intersect
+  @type role ::
+          :to
+          | :per
+          | :after
+          | :before
+          | :of
+          | :off
+          | :on
+          | :intersect
+          | :of_reversed
+          | :per_reversed
 
   @type deictic :: :now | :today | :tomorrow | :yesterday
 
@@ -109,15 +119,23 @@ defmodule LocalizePad.Lexicon do
     ja: %{
       # Japanese marks its arguments with postpositional particles rather than
       # with infix words. `100キロメートルをマイルで` reads "100 kilometres, as
-      # miles" — and `を` happens to sit *between* the two operands, so an
-      # infix parser can use it. That is luck rather than design: see the note
-      # on limits above.
+      # miles" — and `を` happens to sit *between* the two operands in the same
+      # order English uses, so an infix parser can take it as-is.
       to: ["を", "は", "→"],
-      per: ["あたり", "ごと"],
       after: ["後"],
       before: ["前"],
-      of: ["の"],
-      intersect: ["と", "∩"]
+      intersect: ["と", "∩"],
+
+      # These two do not have that luck. `の` is a genitive: `700の20%` is
+      # "700's 20%", so the whole comes *first* where English puts it last.
+      # `あたり` is the same shape — `1日あたり100` is "100 per day", not "1 day
+      # per 100", and reading it in English order answered 0.01.
+      #
+      # Recorded as their own roles rather than corrected in the evaluator,
+      # because the reversal is a fact about Japanese and the evaluator has no
+      # locale. See `LocalizePad.Parser`, which swaps the operands.
+      of_reversed: ["の"],
+      per_reversed: ["あたり", "ごと"]
     }
   }
 
@@ -247,6 +265,51 @@ defmodule LocalizePad.Lexicon do
       }
     }
   }
+
+  # The word that totals a sheet. Soulver uses a keystroke; a pad that has to
+  # survive being pasted into a chat window needs a word you can type — and it
+  # has to be a word in the reader's language, or a German sheet cannot add
+  # itself up.
+  #
+  # `total` appears in more than one list because more than one language
+  # borrowed it.
+  @subtotals %{
+    en: ["sum", "subtotal", "total"],
+    de: ["summe", "zwischensumme", "gesamt", "gesamtsumme", "total"],
+    fr: ["somme", "sous-total", "total"],
+    es: ["suma", "subtotal", "total"],
+    ja: ["合計", "小計", "計"]
+  }
+
+  @doc """
+  Whether a word, alone on a line, totals the entries above it.
+
+  ### Arguments
+
+  * `word` - the line's whole text, trimmed.
+
+  * `locale` - the locale whose vocabulary to read.
+
+  ### Returns
+
+  * `true` or `false`.
+
+  ### Examples
+
+      iex> LocalizePad.Lexicon.subtotal?("sum", :en)
+      true
+
+      iex> LocalizePad.Lexicon.subtotal?("Summe", :de)
+      true
+
+      iex> LocalizePad.Lexicon.subtotal?("breakfast", :en)
+      false
+
+  """
+  @spec subtotal?(String.t(), Locales.locale()) :: boolean()
+  def subtotal?(word, locale \\ :en) when is_binary(word) do
+    String.downcase(word) in Map.get(@subtotals, language(locale), @subtotals.en)
+  end
 
   # Words that name the reader's own units as a conversion target: `42 km in
   # local units`. The answer comes from CLDR's unit preferences for the sheet's

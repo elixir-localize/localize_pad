@@ -74,7 +74,10 @@ defmodule LocalizePad.Parser do
     # side is the operand.
     of: {3, 4},
     off: {3, 4},
-    on: {3, 4}
+    on: {3, 4},
+    # Same binding as the roles they mirror; only the operand order differs.
+    of_reversed: {3, 4},
+    per_reversed: {7, 8}
   }
 
   # Juxtaposition binds tighter than explicit `*` and `/`, so `kg m / s` parses
@@ -268,8 +271,27 @@ defmodule LocalizePad.Parser do
     {:ok, {:number, value}, rest}
   end
 
-  defp parse_prefix([%Token{kind: :unit, value: unit} | rest], _variables, _binding_power) do
-    {:ok, {:unit, unit}, rest}
+  # A name the sheet declared beats the unit dictionary. `week = 5` says what
+  # `week` means on the lines below it, and reading the next one as five weeks
+  # ignores the only statement of intent on the page.
+  #
+  # It bites hardest outside English, where the commonest words are units:
+  # `año`, `Jahr`, `Tag`, `semaine`, `heure`. A reader naming a variable after
+  # an everyday noun is doing the ordinary thing, and `año = 12` followed by
+  # `año * 2` answered `2 años`.
+  #
+  # Only in operand position. A unit *reading* is still what `3 semaines`
+  # wants, and that is settled by the token to its left rather than here.
+  defp parse_prefix(
+         [%Token{kind: :unit, value: unit, source: source} | rest],
+         variables,
+         _binding_power
+       ) do
+    if MapSet.member?(variables, source) do
+      {:ok, {:variable, source}, rest}
+    else
+      {:ok, {:unit, unit}, rest}
+    end
   end
 
   defp parse_prefix([%Token{kind: :line_ref, value: line} | rest], _variables, _binding_power) do
@@ -434,6 +456,13 @@ defmodule LocalizePad.Parser do
   end
 
   defp combine(left, :per, right), do: {:binary, :div, left, right}
+
+  # A postpositional particle puts its operands the other way round: `700の20%`
+  # is "20% of 700" and `1日あたり100` is "100 per day". Swapping here keeps one
+  # evaluator for both word orders — the alternative was a second set of
+  # arithmetic clauses that differ only in which side they read first.
+  defp combine(left, :of_reversed, right), do: {:phrase, :of, right, left}
+  defp combine(left, :per_reversed, right), do: {:binary, :div, right, left}
   defp combine(left, :juxtapose, right), do: {:binary, :mul, left, right}
   defp combine(left, operator, right), do: {:binary, @operator_nodes[operator], left, right}
 

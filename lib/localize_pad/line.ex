@@ -35,7 +35,7 @@ defmodule LocalizePad.Line do
 
   """
 
-  alias LocalizePad.{Evaluator, Parser, Telemetry, Token, Tokenizer, Value}
+  alias LocalizePad.{Evaluator, Lexicon, Locales, Parser, Telemetry, Token, Tokenizer, Value}
 
   @type kind :: :blank | :heading | :comment | :subtotal | :declaration | :expression
 
@@ -82,8 +82,6 @@ defmodule LocalizePad.Line do
   # rather than a label.
   @label ~r/^\s*([^:\n]*\p{L}[^:\n]*):\s+(.*)$/u
 
-  @subtotal_markers ["sum", "subtotal", "total"]
-
   @doc """
   Classifies a line of source text.
 
@@ -115,8 +113,8 @@ defmodule LocalizePad.Line do
       {:expression, "Breakfast", "19 + 22"}
 
   """
-  @spec classify(non_neg_integer(), String.t()) :: t()
-  def classify(index, source) when is_integer(index) and is_binary(source) do
+  @spec classify(non_neg_integer(), String.t(), Locales.locale()) :: t()
+  def classify(index, source, locale \\ :en) when is_integer(index) and is_binary(source) do
     line = %__MODULE__{index: index, source: source}
     body = source |> String.replace(@trailing_comment, "") |> String.trim()
 
@@ -130,7 +128,7 @@ defmodule LocalizePad.Line do
       body == "" ->
         %{line | kind: :blank}
 
-      String.downcase(body) in @subtotal_markers ->
+      Lexicon.subtotal?(body, locale) ->
         %{line | kind: :subtotal}
 
       captures = Regex.run(@declaration, body) ->

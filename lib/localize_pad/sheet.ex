@@ -78,7 +78,7 @@ defmodule LocalizePad.Sheet do
     source
     |> String.split("\n")
     |> Enum.with_index()
-    |> Enum.map(fn {text, index} -> Line.classify(index, text) end)
+    |> Enum.map(fn {text, index} -> Line.classify(index, text, locale) end)
     |> then(&%__MODULE__{locale: locale, prefer_local: prefer_local, lines: &1})
     |> evaluate()
   end
@@ -244,7 +244,7 @@ defmodule LocalizePad.Sheet do
   def put_line(%__MODULE__{lines: lines} = sheet, index, source)
       when is_integer(index) and is_binary(source) do
     if index in 0..(length(lines) - 1)//1 do
-      updated = List.replace_at(lines, index, Line.classify(index, source))
+      updated = List.replace_at(lines, index, Line.classify(index, source, sheet.locale))
       evaluate(%{sheet | lines: updated})
     else
       sheet

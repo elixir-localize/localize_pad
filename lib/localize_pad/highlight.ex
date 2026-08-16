@@ -85,7 +85,7 @@ defmodule LocalizePad.Highlight do
     variables = options |> Keyword.get(:variables, []) |> MapSet.new()
 
     0
-    |> Line.classify(source)
+    |> Line.classify(source, locale)
     |> segments(source, locale, variables)
     |> Enum.reject(fn {_class, text} -> text == "" end)
   end
