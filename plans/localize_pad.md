@@ -1000,7 +1000,8 @@ addressable audience for everything built before it.
 
 **M7 — Product. 🔨 Everything but accounts.** Persistence, Markdown export, sharing, keyboard
 shortcuts, the timeline pane, syntax highlighting and the line-number gutter are done.
-Outstanding: deployment, accounts, sheet persistence across devices, and sheetbooks.
+**Deployed** at <https://pad.elixir-localize.com>. Outstanding: accounts, sheet persistence
+across devices, and sheetbooks.
 
 **The answers are now localized too, not just the numbers in them.** Almost everything in an
 answer comes from CLDR and was already right. What was left was the three strings this program
@@ -1029,8 +1030,15 @@ format it a second time, in whatever locale Gettext resolved rather than the she
 *Gettext does no parent-locale fallback.* A sheet in `de-AT` finds no `de-AT` catalogue and would
 answer in English, so the lookup narrows to the language subtag.
 
-**Deployment target: Fly.io.** Scaffolded — `Dockerfile`, `rel/` and `fly.toml` are in the repo.
-What it implied concretely, none of it exotic but all of it easy to discover the hard way:
+**Deployment: Fly.io, live.** What it implied concretely, none of it exotic but all of it easy
+to discover the hard way:
+
+* **The generated `runtime.exs` raises on a missing `DATABASE_URL` in production**, and the
+  repository sits in the supervision tree — so an app that never touches the database still
+  refuses to boot without one. Nothing here reads or writes it until accounts arrive, so a
+  missing database is now a configuration rather than a fault: the repository is configured when
+  the variable is present and simply not started when it is not. This reverts when accounts land,
+  and the comment in `runtime.exs` says so.
 
 * `mix phx.gen.release --docker` for the release and Dockerfile, then `fly launch`.
 
