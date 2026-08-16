@@ -138,6 +138,7 @@ defmodule LocalizePad.Lexicon do
       # Word sets, each of which must appear in full. `day` and `week` together
       # catch "what day of the week is…" without claiming either word alone.
       day_of_week: [["day", "week"]],
+      what: ["what"],
       ordinals: %{
         "first" => 1,
         "second" => 2,
@@ -152,6 +153,7 @@ defmodule LocalizePad.Lexicon do
       every: ["jeden", "jede", "jedes", "alle"],
       weekday: ["werktag", "werktage", "arbeitstag", "arbeitstage"],
       day_of_week: [["wochentag"]],
+      what: ["was", "wieviel"],
       # Strong and weak endings both, because both are written.
       ordinals: %{
         "erster" => 1,
@@ -181,6 +183,7 @@ defmodule LocalizePad.Lexicon do
       # needs the one that carries the meaning.
       weekday: ["ouvrable", "ouvrables", "ouvré", "ouvrés"],
       day_of_week: [["jour", "semaine"]],
+      what: ["quoi", "combien"],
       ordinals: %{
         "premier" => 1,
         "première" => 1,
@@ -199,6 +202,7 @@ defmodule LocalizePad.Lexicon do
       every: ["cada", "todos", "todas"],
       weekday: ["laborable", "laborables", "hábil", "hábiles"],
       day_of_week: [["día", "semana"]],
+      what: ["qué", "cuánto"],
       ordinals: %{
         "primer" => 1,
         "primero" => 1,
@@ -223,6 +227,7 @@ defmodule LocalizePad.Lexicon do
       every: ["毎週", "毎月", "毎年", "毎日", "毎"],
       weekday: ["平日", "営業日"],
       day_of_week: [["何曜日"]],
+      what: ["何"],
       ordinals: %{
         "第一" => 1,
         "第1" => 1,
@@ -505,6 +510,41 @@ defmodule LocalizePad.Lexicon do
   @spec ordinal(String.t(), atom()) :: {:ok, integer()} | :error
   def ordinal(word, locale \\ :en) when is_binary(word) do
     Map.fetch(recurrence(locale).ordinals, word)
+  end
+
+  @doc """
+  Returns whether a word marks the unknown in a question.
+
+  `what` in `180 is what % off 200`. The word is per locale like any other, but
+  the phrasings that use it are English-shaped — see `LocalizePad.Inversion`,
+  which is where vocabulary stops being enough.
+
+  ### Arguments
+
+  * `word` - the surface form to test, already downcased.
+
+  * `locale` - a locale identifier. Locales without an authored table fall
+    back to `:en`.
+
+  ### Returns
+
+  * `true` or `false`.
+
+  ### Examples
+
+      iex> LocalizePad.Lexicon.what?("what", :en)
+      true
+
+      iex> LocalizePad.Lexicon.what?("was", :de)
+      true
+
+      iex> LocalizePad.Lexicon.what?("200", :en)
+      false
+
+  """
+  @spec what?(String.t(), atom()) :: boolean()
+  def what?(word, locale \\ :en) when is_binary(word) do
+    word in Map.get(recurrence(locale), :what, [])
   end
 
   @doc """

@@ -27,4 +27,9 @@ budget = $600
 budget - @11
 
 // Try editing a number above. Everything that depended on it follows.
+
+# Scaling it up
+
+// If two people cost this much, what would eight?
+2 is to 538 as 8 is to what
 ```

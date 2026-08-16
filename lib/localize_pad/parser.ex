@@ -50,7 +50,7 @@ defmodule LocalizePad.Parser do
 
   """
 
-  alias LocalizePad.{Finance, Token}
+  alias LocalizePad.{Finance, Inversion, Token}
   alias LocalizePad.Temporal.{Recurrence, Uncertain, Workdays}
 
   # {left, right} binding powers. Right < left makes an operator
@@ -112,6 +112,7 @@ defmodule LocalizePad.Parser do
           | {:recurrence, String.t(), Date.t()}
           | {:workdays, atom(), map()}
           | {:uncertain, String.t()}
+          | {:inversion, atom(), map()}
 
   @doc """
   Parses a token stream into an AST.
@@ -172,7 +173,8 @@ defmodule LocalizePad.Parser do
   # Each phrase matcher looks at the whole line and either claims it or passes.
   # Ordinary expression parsing is the fallback.
   defp phrase(tokens, variables, options) do
-    with :error <- Workdays.match(tokens, options),
+    with :error <- Inversion.match(tokens, options),
+         :error <- Workdays.match(tokens, options),
          :error <- Uncertain.match(tokens),
          :error <- Recurrence.match(tokens, options) do
       parse_expression_tokens(tokens, variables)

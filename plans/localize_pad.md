@@ -1014,6 +1014,30 @@ The file is read in the browser and arrives as text, so an upload is an ordinary
 time the server sees it. No `allow_upload`, nothing in a temporary directory, and the promise
 that the server never receives a sheet survives a feature that looks like it should break it.
 
+**The "is what" family closed the last gap against Soulver's documented examples.** These state
+the value and ask for a piece of the expression, which is the reverse of every other line in a
+sheet — `what` marks the hole, and which hole it is decides the arithmetic:
+
+* `180 is what % of 200` → 90%, `180 is what % off 200` → 10%, `220 is what % more than 200`
+  → 10%. The same two numbers, three answers, which is precisely why each is matched separately
+  and a line naming none of the prepositions is refused rather than given a default. Guessing
+  here would produce a confident wrong number, and these phrasings exist *because* people are
+  unsure which way the operation goes.
+
+* `20 is 10% of what` → 200. Same preposition as the first case; only the position of `what`
+  separates asking for the share from asking for the whole.
+
+* `$30/day is what per year` → $10,957.28/year, matching Soulver to the cent, because rate
+  conversion already existed and this only had to ask it.
+
+* `6 is to 60 as 8 is to what` → 80.
+
+**And it is where vocabulary-per-locale finally stops being enough.** The words live in the
+lexicon like everything else, but the *order* — value, `is`, hole, preposition, value — does not
+carry, and swapping the vocabulary alone will not make `20 ist 10% von was` work. §6 predicted
+this limit; this is the feature that reaches it. Localizing these needs phrase rules per locale,
+which is a different and larger piece of work than adding words to a table.
+
 **Six example pads ship in `priv/examples`, and the documentation is the pad.** Each is a working
 sheet whose own comments explain it, which is the only form of documentation here that cannot
 rot unnoticed: the suite evaluates every line of every example and fails the build when a claim
