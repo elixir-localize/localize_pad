@@ -39,6 +39,17 @@ defmodule LocalizePadWeb.SheetLive do
   cannot catch: `@3` would quietly resolve to something other than the row
   labelled 3.
 
+  ## The columns scroll as one
+
+  Line *n* of the text, its number and its answer are the same row, so they
+  cannot scroll independently without the rows ceasing to mean the same thing.
+  Vertical scroll is therefore shared in both directions — dragging the answer
+  column moves the text and vice versa — with a flag to stop each update
+  triggering the other back.
+
+  Horizontal scroll is the text's alone. A long line running off to the right
+  must not take the line numbers or the answers with it.
+
   The gutter follows the text vertically and stays put horizontally. Scrolling
   a long line to the right must not carry the line numbers off the edge with
   it, which is the one way this differs from the highlight layer beneath the
@@ -425,7 +436,7 @@ defmodule LocalizePadWeb.SheetLive do
 
       <form id="sheet" phx-hook=".SheetStorage" phx-change="edit" class="min-h-0 flex-1">
         <div class="flex h-full overflow-hidden rounded-lg border border-base-300">
-          <div class="sheet-editor w-3/5">
+          <div class="sheet-editor flex-1">
             <pre id="gutter" class="sheet-text sheet-gutter" aria-hidden="true"><code
               :for={number <- 1..length(@highlighted)//1}
             >{number}{"\n"}</code></pre>
@@ -450,7 +461,15 @@ defmodule LocalizePadWeb.SheetLive do
             </div>
           </div>
 
-          <div class="sheet-answers w-2/5 overflow-auto border-l border-base-300 bg-base-200/40 p-4 text-right">
+          <%!-- Fixed rather than sized to content: an adaptive column would
+          resize on every keystroke and drag the divider with it. 30% fits the
+          ordinary run of answers — a converted unit, a formatted amount — and
+          a set of dates truncates, which it did at any width and is what the
+          detail panel below the sheet is for. --%>
+          <div
+            id="answers"
+            class="sheet-answers w-[30%] shrink-0 overflow-auto border-l border-base-300 bg-base-200/40 p-4 text-right"
+          >
             <div
               :for={line <- @sheet.lines}
               phx-click={line.formatted && "select"}
@@ -600,20 +619,48 @@ defmodule LocalizePadWeb.SheetLive do
         syncScroll(textarea) {
           const highlight = this.el.querySelector("#highlight")
           const gutter = this.el.querySelector("#gutter")
+          const answers = this.el.querySelector("#answers")
           if (!highlight) return
 
-          const follow = () => {
-            highlight.scrollTop = textarea.scrollTop
-            highlight.scrollLeft = textarea.scrollLeft
-            // The gutter follows vertically only. Scrolling a long line right
-            // must not carry the line numbers off the edge with it.
-            if (gutter) gutter.scrollTop = textarea.scrollTop
+          // The four columns are one document: line n of the text, its number
+          // and its answer are the same row. Scrolling any of them has to move
+          // the others or the rows stop meaning the same thing.
+          //
+          // The flag is what keeps that from becoming a loop — setting
+          // scrollTop fires `scroll`, which would set it back.
+          let syncing = false
+
+          const share = (top, left) => {
+            if (syncing) return
+            syncing = true
+
+            highlight.scrollTop = top
+            if (gutter) gutter.scrollTop = top
+            if (answers) answers.scrollTop = top
+
+            // Horizontal is the text's alone. A long line scrolling right must
+            // not drag the line numbers or the answers off the edge with it.
+            if (left !== null) {
+              highlight.scrollLeft = left
+              textarea.scrollLeft = left
+            }
+
+            if (textarea.scrollTop !== top) textarea.scrollTop = top
+            syncing = false
           }
 
-          textarea.addEventListener("scroll", follow)
-          textarea.addEventListener("input", follow)
-          this.handleEvent("scroll-sync", follow)
-          follow()
+          textarea.addEventListener("scroll", () =>
+            share(textarea.scrollTop, textarea.scrollLeft)
+          )
+          textarea.addEventListener("input", () =>
+            share(textarea.scrollTop, textarea.scrollLeft)
+          )
+          if (answers) {
+            answers.addEventListener("scroll", () => share(answers.scrollTop, null))
+          }
+
+          this.handleEvent("scroll-sync", () => share(textarea.scrollTop, textarea.scrollLeft))
+          share(textarea.scrollTop, textarea.scrollLeft)
         },
 
         // Save on input rather than on the debounced change, so a reload

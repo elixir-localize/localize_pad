@@ -119,6 +119,21 @@ defmodule LocalizePad.LocalesTest do
       assert answer("2026年7月3日は何曜日", :ja) == "金曜日"
     end
 
+    test "era years resolve against the Japanese calendar" do
+      # `令和8年` is Reiwa 8. The Gregorian calendar has no idea what that means,
+      # so the first parse fails and the window is offered to the calendar that
+      # does. The era names are not enumerated here — CLDR knows all 236 of
+      # them, and Calendrical refusing a string is a cheaper and more accurate
+      # answer than a regex of every era since 645.
+      assert answer("令和8年7月3日", :ja) == "2026年7月3日"
+      assert answer("平成31年4月30日", :ja) == "2019年4月30日"
+      assert answer("昭和39年10月10日", :ja) == "1964年10月10日"
+    end
+
+    test "an era date can be asked about like any other" do
+      assert answer("令和8年7月3日は何曜日", :ja) == "金曜日"
+    end
+
     test "the CJK date shape needs one marker, not two" do
       # The Latin rule demands two separators because `9.8` and `100/5` are
       # ambiguous with arithmetic. 年月日 are not arithmetic in any language, so

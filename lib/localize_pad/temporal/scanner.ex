@@ -64,6 +64,12 @@ defmodule LocalizePad.Temporal.Scanner do
   # it the string. Leaving them out was why a Japanese sheet could not answer
   # a question about a Japanese date.
   @date_cjk ~r/\d+\s*[年月日]/u
+  # An era-marked year: Han characters immediately before `年`, as in
+  # `令和8年`. CLDR knows all 236 Japanese era names and this deliberately does
+  # not enumerate them — the question is only whether to *offer* the string to
+  # a calendar that knows eras, and Calendrical refusing it is a cheaper and
+  # more accurate answer than a regex of every era since 645 AD.
+  @era_year ~r/\p{Han}+\s*\d+\s*年/u
 
   @type segment :: {:text, String.t()} | {:temporal, map(), String.t()}
 
@@ -153,11 +159,30 @@ defmodule LocalizePad.Temporal.Scanner do
   # deciding which year it means is a policy question for the evaluator, not
   # something to have guessed here.
   defp parse(source, locale) do
-    Calendrical.parse(source, locale: locale, as: :map)
+    case Calendrical.parse(source, locale: locale, as: :map) do
+      {:ok, fields} -> {:ok, fields}
+      {:error, reason} -> parse_era(source, locale, reason)
+    end
   rescue
     # The parser is not supposed to raise, but this sits on the render path of
     # a live document and a malformed span must never take a sheet down.
     _exception -> :error
+  end
+
+  # `令和8年7月3日` is Reiwa 8, and the Gregorian calendar has no idea what that
+  # means — so the first attempt fails and this offers it to the calendar that
+  # does. Gated on the era shape rather than tried for everything: a second
+  # parse of every failed window would widen the net that the shape filter
+  # exists to keep narrow.
+  defp parse_era(source, locale, reason) do
+    if Regex.match?(@era_year, source) do
+      case Calendrical.parse(source, locale: locale, calendar: :japanese, as: :map) do
+        {:ok, fields} -> {:ok, fields}
+        _still_not_a_date -> {:error, reason}
+      end
+    else
+      {:error, reason}
+    end
   end
 
   # A window is only worth offering to the parser if it looks like a date or a
@@ -243,7 +268,7 @@ defmodule LocalizePad.Temporal.Scanner do
 
   # A full CJK date, longest form first. Used to carve candidates out of an
   # unspaced run; the shape filter above decides whether one is worth parsing.
-  @date_cjk_span ~r/\d+\s*年\s*\d+\s*月\s*\d+\s*日|\d+\s*月\s*\d+\s*日/u
+  @date_cjk_span ~r/\p{Han}{1,4}\s*\d+\s*年\s*\d+\s*月\s*\d+\s*日|\d+\s*年\s*\d+\s*月\s*\d+\s*日|\d+\s*月\s*\d+\s*日/u
 
   # Byte offsets and lengths of each candidate window.
   #
