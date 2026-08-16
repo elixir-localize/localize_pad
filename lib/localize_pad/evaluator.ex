@@ -647,6 +647,16 @@ defmodule LocalizePad.Evaluator do
   # Australian is 5 foot 10.87 inches to an American, and CLDR says so by
   # returning both parts — so the list is kept rather than flattened to its
   # first element, and `LocalizePad.Value` renders it.
+  # `200 EUR in preferred currency`. The territory decides which, exactly as it
+  # decides whether a distance is miles — and the rate comes from the exchange
+  # service, so a line asking this before any rates arrive is refused rather
+  # than answered with a stale or invented number.
+  defp convert(%Money{} = money, {:preference, locale, :currency}) do
+    with {:ok, currency} <- Localize.Currency.currency_from_locale(locale) do
+      convert(money, {:currency, currency})
+    end
+  end
+
   defp convert(%Unit{} = source, {:preference, locale, usage}) do
     case Localize.Unit.localize(source, locale: locale, usage: usage) do
       {:ok, [single]} -> {:ok, single}

@@ -347,6 +347,10 @@ defmodule LocalizePad.Lexicon do
   # feature is worth.
   @usages %{
     en: %{
+      # Not a CLDR unit usage but the same shape of question: what the reader
+      # wants the answer expressed in. `in preferred currency` converts money
+      # the way `in preferred units` converts a quantity.
+      "currency" => :currency,
       "height" => :person_height,
       "weight" => :person,
       "body" => :person,
@@ -357,6 +361,7 @@ defmodule LocalizePad.Lexicon do
       "floor" => :floor_space
     },
     de: %{
+      "währung" => :currency,
       "körpergröße" => :person_height,
       "größe" => :person_height,
       "gewicht" => :person,
@@ -366,6 +371,8 @@ defmodule LocalizePad.Lexicon do
       "wohnfläche" => :floor_space
     },
     fr: %{
+      "devise" => :currency,
+      "monnaie" => :currency,
       "taille" => :person_height,
       "poids" => :person,
       "liquide" => :fluid,
@@ -374,6 +381,7 @@ defmodule LocalizePad.Lexicon do
       "surface" => :floor_space
     },
     es: %{
+      "moneda" => :currency,
       "altura" => :person_height,
       "peso" => :person,
       "líquido" => :fluid,
@@ -382,84 +390,7 @@ defmodule LocalizePad.Lexicon do
       "superficie" => :floor_space
     },
     ja: %{
-      "身長" => :person_height,
-      "体重" => :person,
-      "液体" => :fluid,
-      "道路" => :road,
-      "土地" => :land
-    }
-  }
-
-  # Words that name the reader's own units as a conversion target: `42 km in
-  # preferred units`. The answer comes from CLDR's unit preferences for the
-  # sheet's territory, so `en-AU` keeps kilometres where `en-US` gets miles.
-  #
-  # `preferred` first because it is CLDR's own word for this, and it says what
-  # the answer depends on. `local` reads well too and both are kept: a sheet
-  # already written with one must not stop working because the other reads
-  # better.
-  #
-  # Single words only, deliberately. `local units` and `unités locales` then
-  # work without a multi-word matcher, because the second word falls through as
-  # trailing prose the way `19 + 22 for breakfast` already does.
-  #
-  # These are *targets*, not operators, so they sit here rather than in the
-  # role table — the same reason `today` does.
-  @preferences %{
-    en: ["preferred", "local", "locally"],
-    de: ["bevorzugt", "bevorzugte", "bevorzugten", "lokal", "lokale", "lokalen", "ortsüblich"],
-    fr: ["préféré", "préférée", "préférés", "préférées", "local", "locale", "locales"],
-    es: ["preferido", "preferida", "preferidos", "preferidas", "local", "locales"],
-    ja: ["優先", "現地", "ローカル"]
-  }
-
-  # What the quantity is *for*, which is the other half of what CLDR needs to
-  # pick a unit. The territory alone says an American measures length in feet;
-  # the usage is what makes 1.8 m come back as `5 foot 10.87 inch` rather than
-  # `5.91 foot`, and what gives a British weight in stone.
-  #
-  # These words are only read as usages directly after the preference word —
-  # `in local height units`, never `height` on its own. That is what keeps
-  # `height = 1.8 m` a declaration: a calculator whose vocabulary quietly
-  # claimed `height`, `weight` and `floor` would break more sheets than the
-  # feature is worth.
-  @usages %{
-    en: %{
-      "height" => :person_height,
-      "weight" => :person,
-      "body" => :person,
-      "fluid" => :fluid,
-      "drink" => :fluid,
-      "road" => :road,
-      "land" => :land,
-      "floor" => :floor_space
-    },
-    de: %{
-      "körpergröße" => :person_height,
-      "größe" => :person_height,
-      "gewicht" => :person,
-      "flüssigkeit" => :fluid,
-      "straße" => :road,
-      "land" => :land,
-      "wohnfläche" => :floor_space
-    },
-    fr: %{
-      "taille" => :person_height,
-      "poids" => :person,
-      "liquide" => :fluid,
-      "route" => :road,
-      "terrain" => :land,
-      "surface" => :floor_space
-    },
-    es: %{
-      "altura" => :person_height,
-      "peso" => :person,
-      "líquido" => :fluid,
-      "carretera" => :road,
-      "terreno" => :land,
-      "superficie" => :floor_space
-    },
-    ja: %{
+      "通貨" => :currency,
       "身長" => :person_height,
       "体重" => :person,
       "液体" => :fluid,

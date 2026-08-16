@@ -10,6 +10,7 @@ defmodule LocalizePad.Application do
     children =
       [LocalizePadWeb.Telemetry] ++
         repo() ++
+        exchange_rates() ++
         [
           {DNSCluster, query: Application.get_env(:localize_pad, :dns_cluster_query) || :ignore},
           {Phoenix.PubSub, name: LocalizePad.PubSub},
@@ -23,6 +24,17 @@ defmodule LocalizePad.Application do
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: LocalizePad.Supervisor]
     Supervisor.start_link(children, opts)
+  end
+
+  # Only when there is an app id to authenticate with. Started here rather than
+  # by `ex_money` itself, whose implicit start is deprecated; without a key the
+  # retriever would poll a service that will refuse it, once a day, forever.
+  defp exchange_rates do
+    if Application.get_env(:ex_money, :open_exchange_rates_app_id) do
+      [Money.ExchangeRates.Retriever]
+    else
+      []
+    end
   end
 
   # The database is optional until accounts arrive. Dev and test configure a

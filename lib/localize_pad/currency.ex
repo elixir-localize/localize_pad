@@ -28,6 +28,8 @@ defmodule LocalizePad.Currency do
 
   """
 
+  alias LocalizePad.Locales
+
   # Symbols that name a currency outright. `$` is deliberately absent: it
   # depends on the locale and is resolved separately.
   @symbols %{
@@ -121,6 +123,98 @@ defmodule LocalizePad.Currency do
   def currency?(marker, locale \\ :en) do
     match?({:ok, _code}, resolve(marker, locale))
   end
+
+  @doc """
+  Resolves a currency written by name in the reader's language.
+
+  ### Arguments
+
+  * `name` - the name as written, such as `Australian dollar` or
+    `Australischer Dollar`.
+
+  * `locale` - the locale whose currency names apply.
+
+  ### Returns
+
+  * `{:ok, code}` or `:error`.
+
+  ### Examples
+
+      iex> LocalizePad.Currency.resolve_name("australian dollar", :en)
+      {:ok, :AUD}
+
+      iex> LocalizePad.Currency.resolve_name("australischer dollar", :de)
+      {:ok, :AUD}
+
+      iex> LocalizePad.Currency.resolve_name("breakfast", :en)
+      :error
+
+  """
+  @spec resolve_name(String.t(), Locales.locale()) :: {:ok, atom()} | :error
+  def resolve_name(name, locale) when is_binary(name) do
+    Map.fetch(names(locale), normalize(name))
+  end
+
+  @doc """
+  Every currency name this locale knows, longest first.
+
+  Used by the tokenizer to match `Australian dollar` before its words are
+  classified separately.
+
+  ### Arguments
+
+  * `locale` - the locale whose currency names apply.
+
+  ### Returns
+
+  * A list of lowercased names.
+
+  ### Examples
+
+      iex> "australian dollar" in LocalizePad.Currency.known_names(:en)
+      true
+
+  """
+  @spec known_names(Locales.locale()) :: [String.t()]
+  def known_names(locale) do
+    locale |> names() |> Map.keys() |> Enum.sort_by(&(-String.length(&1)))
+  end
+
+  # Name to code, from CLDR's own currency names — the display name and both
+  # plural forms, so `Australian dollar` and `Australian dollars` both resolve.
+  # Nothing here is authored; the same data renders the answer.
+  defp names(locale) do
+    id = Localize.Locale.cldr_locale_id_from(locale)
+    key = {__MODULE__, :names, id}
+
+    case :persistent_term.get(key, nil) do
+      nil ->
+        built = build_names(locale)
+        :persistent_term.put(key, built)
+        built
+
+      built ->
+        built
+    end
+  end
+
+  defp build_names(locale) do
+    case Localize.Locale.get(locale, [:currencies]) do
+      {:ok, currencies} ->
+        for {code, currency} <- currencies,
+            currency.tender,
+            name <- [currency.name | Map.values(currency.count || %{})],
+            is_binary(name),
+            into: %{} do
+          {normalize(name), code}
+        end
+
+      _absent ->
+        %{}
+    end
+  end
+
+  defp normalize(name), do: name |> String.trim() |> String.downcase()
 
   # `$` means the reader's own dollar — but only where the reader's currency is
   # actually written `$`. That holds for the US, Australia, Canada, Singapore

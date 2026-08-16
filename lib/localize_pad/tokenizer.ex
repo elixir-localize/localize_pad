@@ -122,6 +122,7 @@ defmodule LocalizePad.Tokenizer do
       |> mark_currencies(locale)
       |> join_zones(locale)
       |> mark_calendars()
+      |> mark_currency_names(locale)
       |> mark_preferences(locale)
       |> promote_everyday()
 
@@ -463,6 +464,50 @@ defmodule LocalizePad.Tokenizer do
 
   defp conversion?(%Token{kind: :keyword, value: :to}), do: true
   defp conversion?(_token), do: false
+
+  # `200 EUR in Australian dollars`. CLDR names every currency in every
+  # language, so this needs no vocabulary of its own — but currency names are
+  # made of ordinary words (`dollar`, `pound`, `real`, `won`), and claiming
+  # them wherever they appear would turn prose into money.
+  #
+  # So a name is only read as one directly after a conversion keyword, which
+  # is the one place a currency can be the answer. Longest run first, because
+  # `Australian dollars` must beat `dollars`.
+  defp mark_currency_names([], _locale), do: []
+
+  defp mark_currency_names([%Token{kind: :keyword, value: :to} = keyword | rest], locale) do
+    case longest_currency_name(rest, locale) do
+      {:ok, code, source, consumed} ->
+        token = Token.covering(Token.new(:currency, code, source), Enum.take(rest, consumed))
+
+        [keyword, token | rest |> Enum.drop(consumed) |> mark_currency_names(locale)]
+
+      :error ->
+        [keyword | mark_currency_names(rest, locale)]
+    end
+  end
+
+  defp mark_currency_names([token | rest], locale) do
+    [token | mark_currency_names(rest, locale)]
+  end
+
+  @maximum_currency_words 4
+
+  defp longest_currency_name(tokens, locale) do
+    words = tokens |> Enum.take(@maximum_currency_words) |> Enum.take_while(&(&1.kind == :word))
+
+    words
+    |> Enum.count()
+    |> countdown()
+    |> Enum.find_value(:error, fn length ->
+      source = words |> Enum.take(length) |> Enum.map_join(" ", & &1.source)
+
+      case Currency.resolve_name(source, locale) do
+        {:ok, code} -> {:ok, code, source, length}
+        :error -> nil
+      end
+    end)
+  end
 
   # `42 km in local units`. Like a calendar, this only ever names a conversion
   # target, and it carries the locale it was read under: "local" means the

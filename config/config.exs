@@ -95,10 +95,17 @@ config :localize,
   # particular fallback is the one to watch.
   allow_runtime_locale_download: true
 
-# Currency conversion arrives in M4. Until then there is no exchange-rate
-# retriever in the supervision tree, so tell Money not to start one implicitly —
-# the implicit start is deprecated and would otherwise warn on every boot.
-config :ex_money, auto_start_exchange_rate_service: false
+# The retriever is started by this application's own supervision tree rather
+# than implicitly by `ex_money`, whose automatic start is deprecated. See
+# `LocalizePad.Application`.
+#
+# Once a day. Open Exchange Rates publishes daily on the free plan, so a
+# shorter interval spends the request quota to fetch the same numbers — and
+# rates are cached in ETS after retrieval, so every conversion in between is a
+# lookup rather than a call.
+config :ex_money,
+  auto_start_exchange_rate_service: false,
+  exchange_rates_retrieve_every: :timer.hours(24)
 
 # Calendrical resolves IANA zone names ("Asia/Tokyo") through whichever
 # timezone database the host application installs. Without this, every

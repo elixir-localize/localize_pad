@@ -23,6 +23,17 @@ end
 config :localize_pad, LocalizePadWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
+# Currency conversion needs an Open Exchange Rates app id. Read at runtime in
+# every environment, so a developer can export it and get real rates without
+# editing configuration — and so the production secret is never compiled in.
+#
+# Without it the retriever starts, fails to authenticate and logs; conversion
+# then reports that it has no rate rather than inventing one. That is the same
+# refusal a reader gets for an unknown currency pair.
+if app_id = System.get_env("OPEN_EXCHANGE_RATES_APP_ID") do
+  config :ex_money, open_exchange_rates_app_id: app_id
+end
+
 if config_env() == :prod do
   # A sheet lives in the browser and in the links people share; nothing reads
   # or writes the database yet. Postgres arrives with accounts, so a deployment
