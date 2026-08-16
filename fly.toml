@@ -27,6 +27,10 @@ kill_signal = "SIGTERM"
   # particular. Every Localize-family app sets this explicitly rather than
   # letting the default drift.
   LOCALIZE_DEFAULT_LOCALE = "en"
+  # Machines find each other through Fly's internal DNS. Without this the
+  # cluster is a single node and the session sync stops at the machine
+  # boundary; see rel/env.sh.eex for the other half.
+  DNS_CLUSTER_QUERY = "localize-pad.internal"
 
 [http_service]
   internal_port = 8080

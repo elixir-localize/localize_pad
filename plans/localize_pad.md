@@ -590,6 +590,10 @@ M5 and M6 are the two thesis milestones; **their order is decision 3 below.** M5
 
 The topic is derived from a signed session cookie so it cannot be forged, and a request without an id publishes *nothing* rather than falling back to a shared topic. That default would have put strangers on one channel, which is the kind of bug that only shows up in production with real users on it.
 
+**And it needs a cluster, which the deployment did not have.** PubSub only reaches processes on connected nodes, and a release starts with no distribution unless told otherwise — the node is not even named, so `DNSCluster` has nothing to join. Fly runs two machines by default. Two windows landing on different machines would silently fail to sync, which is worse than not syncing at all because it would work about half the time and look like a flaky feature rather than a missing one.
+
+Two pieces were missing, and neither shows up in a local test: `rel/env.sh.eex` to name the node and set `-proto_dist inet6_tcp` for Fly's IPv6-only private network, and `DNS_CLUSTER_QUERY` so the machines can find each other. Both are guarded on `FLY_PRIVATE_IP`, so a local release is unaffected.
+
 **It costs a claim, and the docs were changed rather than the claim quietly dropped.** The server now sees sheet contents in transit where before it never did. It still stores none, and the sharing link is still a fragment the server never receives — but "a sheet never reaches the server" was true and is not any more.
 
 Conflicts are last-write-wins with one rule on top: a window whose textarea has focus ignores incoming changes, because the person typing is the better authority for that moment. Without it the last window to render wins an argument with the one being used. Concurrent editing of the same line is not solved and would need a CRDT.
