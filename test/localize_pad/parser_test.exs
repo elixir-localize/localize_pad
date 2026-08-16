@@ -165,6 +165,17 @@ defmodule LocalizePad.ParserTest do
       assert reads("100 kg * 9.8 m/s^2") == "980 kilogram-meter-per-square-second"
     end
 
+    test "a trailing operator is meaning, not commentary" do
+      # `1.234,5 + 1` on a French sheet scans as `1`, a stray `.`, then
+      # `234,5 + 1` — a French reader does not write thousands with a dot. The
+      # tail is a sum the reader plainly meant, and answering `1` by discarding
+      # it was worse than refusing the line.
+      [line] = LocalizePad.Sheet.new("1.234,5 + 1", locale: "fr").lines
+
+      assert line.error == {:unexpected, "+"}
+      refute line.formatted == "1"
+    end
+
     test "a trailing quantity is meaning, not commentary" do
       # The line asked for something the sheet cannot give. Dropping `km` to
       # answer `19` would look like agreement.

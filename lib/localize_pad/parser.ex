@@ -223,7 +223,23 @@ defmodule LocalizePad.Parser do
   # A bare number is not enough to count. Numbers appear in prose all the time
   # — two coffees, three of us — and it is the *unit* that says the writer
   # meant a quantity rather than a remark.
-  @meaningful [:unit, :money, :percentage, :temporal, :currency, :zone, :calendar, :preference]
+  #
+  # An *operator* counts for the same reason. `1.234,5 + 1` on a French sheet
+  # scans as `1`, a stray `.`, then `234,5 + 1`, because a French reader does
+  # not write thousands that way. Swallowing the tail there answered `1` — the
+  # first number of a sum the reader plainly meant, with the rest discarded as
+  # though it were a remark about coffee.
+  @meaningful [
+    :unit,
+    :money,
+    :percentage,
+    :temporal,
+    :currency,
+    :zone,
+    :calendar,
+    :preference,
+    :operator
+  ]
 
   defp discard_or_refuse(ast, remaining) do
     case Enum.find(remaining, &(&1.kind in @meaningful)) do
