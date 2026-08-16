@@ -160,12 +160,9 @@ defmodule LocalizePad.Lexicon do
       # catch "what day of the week is…" without claiming either word alone.
       day_of_week: [["day", "week"]],
       what: ["what"],
+      # Only what the rule sets cannot spell. `last` is a position rather than
+      # an ordinal number, so no locale spells it and every locale needs it.
       ordinals: %{
-        "first" => 1,
-        "second" => 2,
-        "third" => 3,
-        "fourth" => 4,
-        "fifth" => 5,
         "last" => -1
       }
     },
@@ -177,24 +174,9 @@ defmodule LocalizePad.Lexicon do
       what: ["was", "wieviel"],
       # Strong and weak endings both, because both are written.
       ordinals: %{
-        "erster" => 1,
-        "erste" => 1,
-        "ersten" => 1,
-        "zweiter" => 2,
-        "zweite" => 2,
-        "zweiten" => 2,
-        "dritter" => 3,
-        "dritte" => 3,
-        "dritten" => 3,
-        "vierter" => 4,
-        "vierte" => 4,
-        "vierten" => 4,
-        "fünfter" => 5,
-        "fünfte" => 5,
-        "fünften" => 5,
-        "letzter" => -1,
         "letzte" => -1,
-        "letzten" => -1
+        "letzten" => -1,
+        "letzter" => -1
       }
     },
     fr: %{
@@ -205,17 +187,13 @@ defmodule LocalizePad.Lexicon do
       weekday: ["ouvrable", "ouvrables", "ouvré", "ouvrés"],
       day_of_week: [["jour", "semaine"]],
       what: ["quoi", "combien"],
+      # `second` is a synonym for `deuxième` rather than a form of it, so the
+      # rule sets do not produce it.
       ordinals: %{
-        "premier" => 1,
-        "première" => 1,
-        "deuxième" => 2,
-        "second" => 2,
-        "seconde" => 2,
-        "troisième" => 3,
-        "quatrième" => 4,
-        "cinquième" => 5,
         "dernier" => -1,
-        "dernière" => -1
+        "dernière" => -1,
+        "second" => 2,
+        "seconde" => 2
       }
     },
     es: %{
@@ -225,20 +203,8 @@ defmodule LocalizePad.Lexicon do
       day_of_week: [["día", "semana"]],
       what: ["qué", "cuánto"],
       ordinals: %{
-        "primer" => 1,
-        "primero" => 1,
-        "primera" => 1,
-        "segundo" => 2,
-        "segunda" => 2,
-        "tercer" => 3,
-        "tercero" => 3,
-        "tercera" => 3,
-        "cuarto" => 4,
-        "cuarta" => 4,
-        "quinto" => 5,
-        "quinta" => 5,
-        "último" => -1,
-        "última" => -1
+        "última" => -1,
+        "último" => -1
       }
     },
     ja: %{
@@ -250,16 +216,13 @@ defmodule LocalizePad.Lexicon do
       # The segmenter splits 何曜日 into 何 and 曜日, so the set is the pair.
       day_of_week: [["何", "曜日"], ["何曜日"]],
       what: ["何"],
+      # `第1` is the Arabic-numeral form. The rule sets spell `第一` and its
+      # siblings, but a reader typing digits writes these.
       ordinals: %{
-        "第一" => 1,
         "第1" => 1,
-        "第二" => 2,
         "第2" => 2,
-        "第三" => 3,
         "第3" => 3,
-        "第四" => 4,
         "第4" => 4,
-        "第五" => 5,
         "第5" => 5,
         "最後" => -1,
         "最終" => -1

@@ -4,12 +4,12 @@ The thesis behind LocalizePad is that a locale can be added for a page of operat
 
 ## The answer
 
-Roughly **300 to 1**. CLDR supplies around fourteen thousand strings per locale; the pad authors about fifty words and four translated sentences.
+Roughly **330 to 1**. CLDR supplies around fourteen thousand strings per locale; the pad authors about forty words and four translated sentences.
 
 | | en | de | fr | es | ja |
 |---|---:|---:|---:|---:|---:|
 | CLDR strings supplied | 14,725 | 14,987 | 14,186 | 13,913 | 13,749 |
-| hand-authored input vocabulary | 51 | 62 | 47 | 49 | 44 |
+| hand-authored input vocabulary | 46 | 47 | 41 | 37 | 39 |
 | MF2 messages needing translation | 4 | 4 | 4 | 4 | 4 |
 
 ## What CLDR supplies, by area
@@ -36,15 +36,15 @@ Month names, weekday names, era markers, unit display names and their plurals, c
 | table | en | de | fr | es | ja |
 |---|---:|---:|---:|---:|---:|
 | operators — `to`, `per`, `of`, `after`, `before` | 20 | 13 | 8 | 8 | 10 |
-| recurrence — `every`, workday, `last`, ordinal seeds | 16 | 29 | 21 | 25 | 22 |
+| recurrence — `every`, workday, `last` | 11 | 14 | 15 | 13 | 17 |
 | preference targets — `preferred`, `local` | 3 | 7 | 7 | 6 | 3 |
 | usages — `height`, `weight`, `fluid`, `currency` | 9 | 8 | 8 | 7 | 6 |
 | totals — `sum`, `summe`, `somme`, `合計` | 3 | 5 | 3 | 3 | 3 |
-| **total** | **51** | **62** | **47** | **49** | **44** |
+| **total** | **46** | **47** | **41** | **37** | **39** |
 
-The deictics table is gone entirely — `today`, `tomorrow`, `yesterday` and `now` are read from CLDR's relative day and second fields.
+The deictics table is gone entirely — `today`, `tomorrow`, `yesterday` and `now` are read from CLDR's relative day and second fields. The spelled ordinals are gone too, generated from the locale's RBNF rule sets; German recurrence fell from 29 entries to 14 without a reader losing a single form they could type before.
 
-Recurrence is still the largest block, and most of it is now redundant rather than required. The spelled ordinals it contains are also *generated* from the locale's RBNF rule sets, and the generated set is the larger one; what only the table has is `last` — `letzte`, `dernier`, `última` — which is a position rather than an ordinal number, and the French synonym `second`. Pruning the rest would take German from 62 to roughly 47. The table is kept as a merge source for now so that a locale whose rule sets are missing still recognises its ordinals.
+What the ordinals table still holds is what no rule set spells. `last` — `letzte`, `dernier`, `última` — is a position rather than an ordinal number, so every locale needs it and none supplies it. French keeps `second`, which is a synonym for `deuxième` rather than a form of it. Japanese keeps `第1` through `第5`: the rule sets spell `第一` and its siblings, but a reader typing digits writes the other.
 
 ## What translation actually costs
 
@@ -74,7 +74,7 @@ Every row here was authored once and is not any more. The counts are what each l
 | relative day names | 4 | 6 | 6 | 6 | 6 |
 | day-of-week phrases | 2 | 1 | 1 | 1 | 2 |
 
-The reduction in authored words is modest — about five per locale — and it is the least interesting part. What changed is coverage.
+The authored vocabulary fell by about a fifth, and German by more than a quarter. That is the less interesting half. What changed more is coverage.
 
 German ordinals went from 18 written forms to **28** recognised, because the RBNF sets carry the whole case paradigm and a hand list carried what somebody thought of: `erstem` and `erstes` are understood now and were not. French relative days gained `après-demain` and `avant-hier`, German `übermorgen` and `vorgestern` — words the table never had, which now resolve to the days they name. Zone names work in the reader's language, so `Tokio`, `Londres`, `Nueva York` and `東京` all find their clock. And currency conversion accepts any of five hundred–odd names per locale without a word of it being written down.
 
@@ -98,7 +98,7 @@ German ordinals went from 18 written forms to **28** recognised, because the RBN
 
 * **`yes` and `no`.** CLDR carries them as `<messages><yesstr>ja:j</yesstr>`, documented in tr35-general as a colon-separated list of recognised responses — richer than a single string, so it would give answer *matching* as well as rendering. Localize does not currently ship that section: the locale data has 22 top-level keys and `messages` is not among them. It would take the MF2 count from four to two.
 
-* **The remaining inflections.** A Unicode inflector library is expected in September and would act as a morphological analyser. That changes the calculus behind the last authored lists directly — the recurrence block is the largest of them, and most of what is left in it is inflection.
+* **The remaining inflections.** A Unicode inflector library is expected in September and would act as a morphological analyser. What is left to inflect is now small — the ordinals came out with the RBNF rule sets — but the recurrence block still lists `jeden`, `jede`, `jedes` and `alle` for one idea, and the working-day words carry their own plurals. An analyser would take those too.
 
 ## Method
 
