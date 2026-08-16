@@ -17,6 +17,38 @@ defmodule LocalizePadWeb.SheetLiveTest do
 
       assert html =~ "Total"
     end
+
+    # `Localize.Plug.PutLocale` honours the query string and `Accept-Language`,
+    # and neither is limited to locales this application ships data for. A tag
+    # with nothing behind it must not become the sheet's locale: the reader
+    # would be told the sheet was Italian and shown English answers.
+    test "a browser locale we have no data for opens an English sheet, and says so" do
+      conn = get(build_conn(), ~p"/?locale=it")
+      {:ok, _live, html} = live(conn)
+
+      assert html =~ ~s(value="en")
+      refute html =~ ~s(value="it")
+    end
+
+    test "the same for a language tag arriving in a header" do
+      conn =
+        build_conn()
+        |> put_req_header("accept-language", "it-IT,it;q=0.9")
+        |> get(~p"/")
+
+      {:ok, _live, html} = live(conn)
+
+      assert html =~ ~s(value="en")
+      refute html =~ ~s(value="it-IT")
+    end
+
+    test "but a locale we do ship is honoured" do
+      conn = get(build_conn(), ~p"/?locale=en-AU")
+      {:ok, _live, html} = live(conn)
+
+      assert html =~ ~s(value="en-AU")
+      assert html =~ "kilometres"
+    end
   end
 
   describe "editing" do

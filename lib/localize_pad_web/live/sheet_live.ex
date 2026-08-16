@@ -449,8 +449,28 @@ defmodule LocalizePadWeb.SheetLive do
 
   # The whole language tag, which is what a sheet is evaluated against — see
   # `LocalizePad.Locales` for why nothing here reduces it to a name.
+  #
+  # Resolved rather than taken as given. `Localize.Plug.PutLocale` honours the
+  # query string and `Accept-Language`, and neither is limited to locales this
+  # application ships data for: an Italian browser asks for `it-IT` and gets a
+  # valid tag with nothing behind it, so the sheet would read `1.234` as one
+  # point two three four and `3/4/2026` as March, while the header said
+  # Italian. A wrong answer under a label that vouches for it.
+  #
+  # Falling back to the default means an unsupported browser locale opens an
+  # English sheet that *says* English, which the reader can see and change.
+  # The process locale is corrected too, so anything reaching for
+  # `Localize.get_locale/0` further down agrees with what is on screen.
   defp current_locale do
-    Localize.get_locale()
+    case Locales.resolve(Localize.get_locale()) do
+      {:ok, language_tag} ->
+        language_tag
+
+      {:error, _unsupported} ->
+        default = Localize.default_locale()
+        Localize.put_locale(default)
+        default
+    end
   end
 
   @impl Phoenix.LiveView
