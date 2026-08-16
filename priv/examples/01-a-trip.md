@@ -15,6 +15,14 @@ $89 for the flight home
 $120 for dinner
 sum
 
+// Some words are units *and* ordinary English —
+// `cup`, `stone`, `point`, `night`. Here `nights`
+// is plainly prose, so it stays prose. Write
+// `2 cups to mL` and the same word is a unit
+// again: the line decides, not the word.
+room = 80
+room * 3 nights
+
 # Splitting it
 
 // A line can name a value, and later lines can

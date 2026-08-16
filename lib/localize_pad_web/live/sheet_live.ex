@@ -152,7 +152,7 @@ defmodule LocalizePadWeb.SheetLive do
 
   Breakfast: 19 + 22
   hotel = 120
-  hotel * 3 for the whole stay
+  hotel * 3 nights
   sum
 
   // Anything after two slashes is ignored

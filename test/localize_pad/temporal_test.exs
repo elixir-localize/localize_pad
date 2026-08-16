@@ -133,17 +133,21 @@ defmodule LocalizePad.TemporalTest do
       assert answer("120 * 3 sticks") == "360"
     end
 
-    test "a word Unity does alias becomes a quantity, common or not" do
-      # Unity 1.1 derives plurals from the CLDR unit list, which carries a
-      # `night` unit and a `cup`. So `3 nights` is now three nights rather than
-      # prose, and the product of a rate and a night is a quantity that will
-      # not add into a plain subtotal.
+    test "a word that is a unit and also ordinary English is read per line" do
+      # Unity carries a `night` unit and a `cup`, and is right to: `2 cups to
+      # mL` is a real conversion. But these are also words people write, and in
+      # a line that converts nothing the unit reading produced `360 nights`
+      # from a hotel bill.
       #
-      # This is recorded rather than worked around: the vocabulary is Unity's
-      # to define, and a table here second-guessing it is what the last
-      # workaround was.
-      assert answer("120 * 3 nights") == "360 nights"
-      assert answer("2 cups") == "2 cups"
+      # The vocabulary is still Unity's — nothing here removes a word from it.
+      # What this decides is which *reading* a given line wants, the same
+      # judgement the tokenizer already makes for `in` the keyword against `in`
+      # the inch. See `LocalizePad.Units.everyday?/1`.
+      assert answer("120 * 3 nights") == "360"
+      assert answer("2 cups") == "2"
+
+      # And the unit reading is still there for the lines that ask for it.
+      assert answer("2 cups to mL") == "473.176473 milliliters"
     end
 
     test "a non-calendar quantity cannot shift a date" do

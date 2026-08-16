@@ -123,6 +123,7 @@ defmodule LocalizePad.Tokenizer do
       |> join_zones()
       |> mark_calendars()
       |> mark_preferences(locale)
+      |> promote_everyday()
 
     {:ok, tokens}
   end
@@ -414,6 +415,45 @@ defmodule LocalizePad.Tokenizer do
     end)
   end
 
+  # `2 cups to mL` needs `cups` to be a unit. `hotel * 3 nights` needs `nights`
+  # to be prose. Both are a number followed by a word, so position cannot tell
+  # them apart the way it separates `in` the keyword from `in` the inch — and
+  # the parser's demote-and-retry cannot help either, because `360 nights`
+  # succeeds and only a failure triggers a second reading.
+  #
+  # What does separate them is the rest of the line. Every real use of these
+  # words converts something, and every prose use converts nothing, so an
+  # everyday word takes its unit reading only where the line is a conversion
+  # with a unit in it somewhere.
+  #
+  # The unit has to be an unambiguous one, which is what keeps `12 items in the
+  # basket` prose: `in` is a conversion keyword, but `the basket` is not a unit,
+  # so nothing in that line asks for `items` to be one.
+  defp promote_everyday(tokens) do
+    if converts?(tokens), do: Enum.map(tokens, &promote/1), else: tokens
+  end
+
+  defp promote(%Token{kind: :word} = token) do
+    case Token.as(token, :unit) do
+      {:ok, unit_name} -> %{token | kind: :unit, value: unit_name, alternatives: []}
+      :error -> token
+    end
+  end
+
+  defp promote(token), do: token
+
+  # `local units` is itself a resolved target, so a line asking for it needs no
+  # other unit to prove it is a conversion — `2 cups in local units` has none.
+  # A bare `to` does need one, which is what keeps `12 items in the basket`
+  # prose.
+  defp converts?(tokens) do
+    Enum.any?(tokens, &(&1.kind == :preference)) or
+      (Enum.any?(tokens, &conversion?/1) and Enum.any?(tokens, &(&1.kind == :unit)))
+  end
+
+  defp conversion?(%Token{kind: :keyword, value: :to}), do: true
+  defp conversion?(_token), do: false
+
   # `42 km in local units`. Like a calendar, this only ever names a conversion
   # target, and it carries the locale it was read under: "local" means the
   # locale the sheet is being read in, and the sheet is re-tokenized whenever
@@ -622,10 +662,23 @@ defmodule LocalizePad.Tokenizer do
     unit = resolve_unit(word, locale)
 
     case {keyword, unit} do
-      {{:ok, role}, {:ok, unit_name}} -> Token.new(:keyword, role, word, unit: unit_name)
-      {{:ok, role}, _} -> Token.new(:keyword, role, word)
-      {:error, {:ok, unit_name}} -> Token.new(:unit, unit_name, word)
-      {:error, _} -> Token.new(:word, word, word)
+      {{:ok, role}, {:ok, unit_name}} ->
+        Token.new(:keyword, role, word, unit: unit_name)
+
+      {{:ok, role}, _} ->
+        Token.new(:keyword, role, word)
+
+      # An everyday word keeps both readings and starts as prose. The line
+      # decides which one wins — see `promote_everyday/2`.
+      {:error, {:ok, unit_name}} ->
+        if Units.everyday?(word) and language(locale) == "en" do
+          Token.new(:word, word, word, unit: unit_name)
+        else
+          Token.new(:unit, unit_name, word)
+        end
+
+      {:error, _} ->
+        Token.new(:word, word, word)
     end
   end
 

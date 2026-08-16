@@ -45,6 +45,60 @@ defmodule LocalizePad.Units do
 
   """
 
+  # Real units whose names are also ordinary English words. `cup` is a cooking
+  # measure and a thing you drink from; `stone` weighs fourteen pounds and sits
+  # in a garden; `point` is 1/72 inch and is also what somebody scores.
+  #
+  # Unity is right to have every one of them — `2 cups to mL` and `11 stone to
+  # kg` are real conversions, and narrowing its vocabulary would break those
+  # for every consumer. The problem is only ever in prose: `hotel * 3 nights`
+  # answered `360 nights`, and `500 + 300 points` refused outright, because a
+  # notepad line mixes arithmetic with words and these words lost the toss.
+  #
+  # So the reading is decided per line rather than per word — see
+  # `LocalizePad.Tokenizer`. This list is what that decision applies to.
+  #
+  # English only. The ambiguity is a property of the language, not of the unit:
+  # a German writes `Nächte`, which is nothing like `Nacht` the unit, and the
+  # CLDR display-name index is not consulted for English at all.
+  @everyday ~w(
+    bar bars
+    bit bits
+    cup cups
+    drop drops
+    item items
+    knot knots
+    night nights
+    part parts
+    point points
+    stone stones
+  )
+
+  @doc """
+  Whether a unit name is also an ordinary English word.
+
+  ### Arguments
+
+  * `name` - the word to test.
+
+  ### Returns
+
+  * `true` or `false`.
+
+  ### Examples
+
+      iex> LocalizePad.Units.everyday?("nights")
+      true
+
+      iex> LocalizePad.Units.everyday?("kilometer")
+      false
+
+  """
+  @spec everyday?(String.t()) :: boolean()
+  def everyday?(name) when is_binary(name) do
+    String.downcase(name) in @everyday
+  end
+
   @doc """
   Resolves a unit name written in the given locale.
 
