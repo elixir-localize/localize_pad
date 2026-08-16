@@ -55,7 +55,8 @@ defmodule LocalizePad.Lexicon do
           | :of_reversed
           | :per_reversed
 
-  @type deictic :: :now | :today | :tomorrow | :yesterday
+  @type deictic ::
+          :now | :today | :tomorrow | :yesterday | :day_after_tomorrow | :day_before_yesterday
 
   @lexicons %{
     en: %{
@@ -389,46 +390,81 @@ defmodule LocalizePad.Lexicon do
     }
   }
 
-  # Words naming a moment relative to the present. Kept separate from the role
-  # table because these are *operands* rather than operators — `today` is a
-  # date, not something that acts on one.
+  # Words that name the reader's own units as a conversion target: `42 km in
+  # preferred units`. The answer comes from CLDR's unit preferences for the
+  # sheet's territory, so `en-AU` keeps kilometres where `en-US` gets miles.
   #
-  # CLDR does carry relative field names, but not reliably as bare input words
-  # in every locale, so these are authored here alongside the operator
-  # vocabulary and travel with it when a locale is added.
-  @deictics %{
+  # `preferred` first because it is CLDR's own word for this, and it says what
+  # the answer depends on. `local` reads well too and both are kept: a sheet
+  # already written with one must not stop working because the other reads
+  # better.
+  #
+  # Single words only, deliberately. `local units` and `unités locales` then
+  # work without a multi-word matcher, because the second word falls through as
+  # trailing prose the way `19 + 22 for breakfast` already does.
+  #
+  # These are *targets*, not operators, so they sit here rather than in the
+  # role table — the same reason `today` does.
+  @preferences %{
+    en: ["preferred", "local", "locally"],
+    de: ["bevorzugt", "bevorzugte", "bevorzugten", "lokal", "lokale", "lokalen", "ortsüblich"],
+    fr: ["préféré", "préférée", "préférés", "préférées", "local", "locale", "locales"],
+    es: ["preferido", "preferida", "preferidos", "preferidas", "local", "locales"],
+    ja: ["優先", "現地", "ローカル"]
+  }
+
+  # What the quantity is *for*, which is the other half of what CLDR needs to
+  # pick a unit. The territory alone says an American measures length in feet;
+  # the usage is what makes 1.8 m come back as `5 foot 10.87 inch` rather than
+  # `5.91 foot`, and what gives a British weight in stone.
+  #
+  # These words are only read as usages directly after the preference word —
+  # `in local height units`, never `height` on its own. That is what keeps
+  # `height = 1.8 m` a declaration: a calculator whose vocabulary quietly
+  # claimed `height`, `weight` and `floor` would break more sheets than the
+  # feature is worth.
+  @usages %{
     en: %{
-      now: ["now"],
-      today: ["today"],
-      tomorrow: ["tomorrow"],
-      yesterday: ["yesterday"]
+      "height" => :person_height,
+      "weight" => :person,
+      "body" => :person,
+      "fluid" => :fluid,
+      "drink" => :fluid,
+      "road" => :road,
+      "land" => :land,
+      "floor" => :floor_space
     },
     de: %{
-      now: ["jetzt"],
-      today: ["heute"],
-      tomorrow: ["morgen"],
-      yesterday: ["gestern"]
+      "körpergröße" => :person_height,
+      "größe" => :person_height,
+      "gewicht" => :person,
+      "flüssigkeit" => :fluid,
+      "straße" => :road,
+      "land" => :land,
+      "wohnfläche" => :floor_space
     },
     fr: %{
-      now: ["maintenant"],
-      today: ["aujourd'hui"],
-      tomorrow: ["demain"],
-      yesterday: ["hier"]
+      "taille" => :person_height,
+      "poids" => :person,
+      "liquide" => :fluid,
+      "route" => :road,
+      "terrain" => :land,
+      "surface" => :floor_space
     },
     es: %{
-      now: ["ahora"],
-      today: ["hoy"],
-      # `mañana` is both "tomorrow" and "morning". Read as the date, which is
-      # the reading a calculation wants; the other needs context this has none
-      # of.
-      tomorrow: ["mañana"],
-      yesterday: ["ayer"]
+      "altura" => :person_height,
+      "peso" => :person,
+      "líquido" => :fluid,
+      "carretera" => :road,
+      "terreno" => :land,
+      "superficie" => :floor_space
     },
     ja: %{
-      now: ["今"],
-      today: ["今日"],
-      tomorrow: ["明日"],
-      yesterday: ["昨日"]
+      "身長" => :person_height,
+      "体重" => :person,
+      "液体" => :fluid,
+      "道路" => :road,
+      "土地" => :land
     }
   }
 
@@ -556,8 +592,50 @@ defmodule LocalizePad.Lexicon do
   """
   @spec deictics(Locales.locale()) :: %{deictic() => [String.t()]}
   def deictics(locale \\ :en) do
-    Map.get(@deictics, language(locale), @deictics.en)
+    id = Localize.Locale.cldr_locale_id_from(locale)
+    key = {__MODULE__, :deictics, id}
+
+    case :persistent_term.get(key, nil) do
+      nil ->
+        built = build_deictics(locale)
+        :persistent_term.put(key, built)
+        built
+
+      built ->
+        built
+    end
   end
+
+  # `today`, `tomorrow` and `yesterday` are CLDR's relative day names, and
+  # `now` is the relative *second*. Both live in `date_fields`, where they are
+  # written for every locale by people who speak it — so this table used to be
+  # four words per locale transcribed from data already downloaded.
+  #
+  # CLDR carries more than was transcribed: German also has `vorgestern` and
+  # `übermorgen`, which are read here as the days they name.
+  defp build_deictics(locale) do
+    day = relative(locale, :day)
+    second = relative(locale, :second)
+
+    %{
+      now: forms(second[0]),
+      today: forms(day[0]),
+      tomorrow: forms(day[1]),
+      yesterday: forms(day[-1]),
+      day_after_tomorrow: forms(day[2]),
+      day_before_yesterday: forms(day[-2])
+    }
+  end
+
+  defp relative(locale, field) do
+    case Localize.Locale.get(locale, [:date_fields, field, :standard, :relative_ordinal]) do
+      {:ok, relatives} when is_map(relatives) -> relatives
+      _absent -> %{}
+    end
+  end
+
+  defp forms(nil), do: []
+  defp forms(word) when is_binary(word), do: [String.downcase(word)]
 
   @doc """
   Returns whether a word marks a phrase as recurring.
@@ -756,7 +834,91 @@ defmodule LocalizePad.Lexicon do
   """
   @spec recurrence(Locales.locale()) :: map()
   def recurrence(locale \\ :en) do
-    Map.get(@recurrence, language(locale), @recurrence.en)
+    id = Localize.Locale.cldr_locale_id_from(locale)
+    key = {__MODULE__, :recurrence, id}
+
+    case :persistent_term.get(key, nil) do
+      nil ->
+        built = build_recurrence(locale)
+        :persistent_term.put(key, built)
+        built
+
+      built ->
+        built
+    end
+  end
+
+  # Two of these four come from CLDR now.
+  #
+  # The spelled ordinals are generated from the locale's own RBNF rule sets,
+  # which is where the inflections live: German has `spellout_ordinal` and four
+  # more for its cases, French has masculine, feminine and their plurals, and
+  # Spanish has no plain set at all. Generating across all of them produces 25
+  # German forms where 18 were written by hand — `erstem` and `erstes` are
+  # recognised now and were not.
+  #
+  # `day_of_week` is CLDR's own field name for the concept: "Wochentag",
+  # "jour de la semaine", "曜日". The word sets it produces are what the
+  # matcher already expects.
+  #
+  # What stays authored is `every`, the working-day words, and `last`. `last`
+  # is not an ordinal number but a position, and no rule set spells it; the
+  # working-day words are not in CLDR at all — `Werktag` appears nowhere in
+  # the whole common tree, because CLDR models which days are the weekend and
+  # not what the concept is called.
+  defp build_recurrence(locale) do
+    authored = Map.get(@recurrence, language(locale), @recurrence.en)
+
+    %{
+      authored
+      | ordinals: Map.merge(generated_ordinals(locale), authored.ordinals),
+        day_of_week: Enum.uniq(authored.day_of_week ++ derived_day_of_week(locale))
+    }
+  end
+
+  # 1 to 5 across every ordinal rule set the locale has. Anything the locale
+  # cannot spell is simply absent rather than guessed at.
+  @ordinal_positions 1..5
+
+  defp generated_ordinals(locale) do
+    for position <- @ordinal_positions,
+        format <- ordinal_formats(locale),
+        {:ok, spelled} <- [Localize.Number.to_string(position, locale: locale, format: format)],
+        into: %{} do
+      {String.downcase(spelled), position}
+    end
+  end
+
+  defp ordinal_formats(locale) do
+    case Localize.Locale.get(locale, [:rbnf]) do
+      {:ok, rbnf} ->
+        rbnf
+        |> Map.values()
+        |> Enum.flat_map(&Map.keys/1)
+        |> Enum.filter(&String.starts_with?(to_string(&1), "spellout_ordinal"))
+
+      _absent ->
+        []
+    end
+  end
+
+  # CLDR writes the field name as a phrase — "day of the week" — and the
+  # matcher wants the words that carry it. Short words are dropped because
+  # `of` and `the` are in every English sentence and would match anything.
+  defp derived_day_of_week(locale) do
+    case Localize.Locale.get(locale, [:date_fields, :weekday, :standard, :display_name]) do
+      {:ok, name} ->
+        words =
+          name
+          |> String.downcase()
+          |> String.split(~r/\s+/u, trim: true)
+          |> Enum.filter(&(String.length(&1) > 2))
+
+        if words == [], do: [], else: [words]
+
+      _absent ->
+        []
+    end
   end
 
   @doc """

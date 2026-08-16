@@ -32,6 +32,8 @@ defmodule LocalizePad.Temporal.Zones do
 
   """
 
+  alias LocalizePad.Locales
+
   defstruct [:name]
 
   @type t :: %__MODULE__{name: String.t()}
@@ -239,6 +241,8 @@ defmodule LocalizePad.Temporal.Zones do
     with :error <- Map.fetch(cities(locale), key),
          :error <- Map.fetch(cities(:en), key),
          :error <- Map.fetch(@aliases, key),
+         :error <- Map.fetch(countries(locale), key),
+         :error <- Map.fetch(countries(:en), key),
          :error <- Map.fetch(@countries, key),
          :error <- Map.fetch(@airports, key) do
       via_calendrical(name)
@@ -263,6 +267,39 @@ defmodule LocalizePad.Temporal.Zones do
 
       built ->
         built
+    end
+  end
+
+  # A country name means a zone only where the country *has* one zone. `Japan`
+  # is unambiguous and `Vereinigtes Königreich` is too; the United States has
+  # twenty-nine and Australia twelve, so naming either says nothing about which
+  # clock. That is the same test CLDR applies when it chooses between a country
+  # name and a city for a zone's display name.
+  defp countries(locale) do
+    id = Localize.Locale.cldr_locale_id_from(locale)
+    key = {__MODULE__, :countries, id}
+
+    case :persistent_term.get(key, nil) do
+      nil ->
+        built = build_countries(locale)
+        :persistent_term.put(key, built)
+        built
+
+      built ->
+        built
+    end
+  end
+
+  defp build_countries(locale) do
+    territories = Localize.DateTime.Timezone.territories_by_timezone()
+
+    for zone <- @zones,
+        territory = Map.get(territories, zone),
+        territory != nil,
+        Localize.DateTime.Timezone.timezone_count_for_territory(territory) == {:ok, 1},
+        {:ok, name} <- [Localize.Territory.display_name(territory, locale: locale)],
+        into: %{} do
+      {name |> String.trim() |> String.downcase(), zone}
     end
   end
 

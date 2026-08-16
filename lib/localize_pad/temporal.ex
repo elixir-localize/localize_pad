@@ -78,6 +78,11 @@ defmodule LocalizePad.Temporal do
       :today -> from_date(reference)
       :tomorrow -> reference |> Date.add(1) |> from_date()
       :yesterday -> reference |> Date.add(-1) |> from_date()
+      # CLDR names these in most locales — `übermorgen`, `après-demain`,
+      # 明後日 — and now that the vocabulary is read from it rather than
+      # transcribed, they arrive here and mean what they say.
+      :day_after_tomorrow -> reference |> Date.add(2) |> from_date()
+      :day_before_yesterday -> reference |> Date.add(-2) |> from_date()
       :now -> from_datetime(Keyword.get_lazy(options, :reference_datetime, &DateTime.utc_now/0))
     end
   end

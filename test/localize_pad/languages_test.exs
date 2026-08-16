@@ -104,4 +104,72 @@ defmodule LocalizePad.LanguagesTest do
       assert answer("42 km 現地", "ja") == "42 キロメートル"
     end
   end
+
+  describe "vocabulary CLDR supplies rather than us" do
+    alias LocalizePad.Lexicon
+    alias LocalizePad.Temporal.Zones
+
+    test "relative day names, including ones never authored" do
+      # `übermorgen` and `vorgestern` were not in the hand table at all. They
+      # arrive because the words are read from CLDR rather than transcribed.
+      assert Lexicon.deictic("übermorgen", :de) == {:ok, :day_after_tomorrow}
+      assert Lexicon.deictic("vorgestern", :de) == {:ok, :day_before_yesterday}
+      assert Lexicon.deictic("aujourd’hui", :fr) == {:ok, :today}
+      assert Lexicon.deictic("明日", :ja) == {:ok, :tomorrow}
+    end
+
+    test "and they resolve to the days they name" do
+      today = Date.utc_today()
+
+      assert answer("übermorgen", "de") ==
+               Localize.Date.to_string!(Date.add(today, 2), locale: "de", format: :long)
+
+      assert answer("vorgestern", "de") ==
+               Localize.Date.to_string!(Date.add(today, -2), locale: "de", format: :long)
+    end
+
+    test "spelled ordinals come from the locale's own rule sets" do
+      # German inflects its ordinals, and CLDR carries every case. The hand
+      # table listed eighteen forms; generation finds more.
+      german = Lexicon.recurrence(:de).ordinals
+
+      assert german["erste"] == 1
+      assert german["ersten"] == 1
+      assert german["erster"] == 1
+      assert german["erstes"] == 1
+      assert map_size(german) > 18
+    end
+
+    test "but `last` stays authored, being a position and not an ordinal" do
+      assert Lexicon.recurrence(:de).ordinals["letzte"] == -1
+      assert Lexicon.recurrence(:en).ordinals["last"] == -1
+    end
+
+    test "the day-of-week phrase is CLDR's own field name" do
+      assert ["wochentag"] in Lexicon.recurrence(:de).day_of_week
+      assert ["jour", "semaine"] in Lexicon.recurrence(:fr).day_of_week
+    end
+
+    test "zone city names are the locale's" do
+      assert {:ok, %Zones{name: "Asia/Tokyo"}} = Zones.resolve("Tokio", :de)
+      assert {:ok, %Zones{name: "Europe/London"}} = Zones.resolve("Londres", :fr)
+      assert {:ok, %Zones{name: "America/New_York"}} = Zones.resolve("Nueva York", :es)
+      assert {:ok, %Zones{name: "Asia/Tokyo"}} = Zones.resolve("東京", :ja)
+    end
+
+    test "and the identifier's name still works in any locale" do
+      # Half the world's software prints the IANA name; a German sheet must
+      # not stop understanding it.
+      assert {:ok, %Zones{name: "Asia/Tokyo"}} = Zones.resolve("Tokyo", :de)
+    end
+
+    test "a country names a zone only where it has one" do
+      assert {:ok, %Zones{name: "Asia/Tokyo"}} = Zones.resolve("Japan", :de)
+      assert {:ok, %Zones{name: "Asia/Tokyo"}} = Zones.resolve("Japon", :fr)
+      assert {:ok, %Zones{name: "Europe/Paris"}} = Zones.resolve("France", :en)
+
+      # The United States has twenty-nine, so its name says nothing about which.
+      assert Zones.resolve("Vereinigte Staaten", :de) == :error
+    end
+  end
 end

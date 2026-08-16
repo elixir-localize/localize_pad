@@ -206,6 +206,13 @@ defmodule LocalizePad.Evaluator do
   defp negate(value) when is_number(value), do: {:ok, -value}
   defp negate(%Unit{} = unit), do: {:ok, Math.negate(unit)}
 
+  # Everything else. A date has no negative, and neither has a zone or a
+  # currency — but a line can still ask for one, because a hyphen is a minus
+  # sign to the tokenizer: `après-demain` arrives here as the negation of a
+  # date. This module promises never to raise on the render path, and without
+  # this clause that line took the page down.
+  defp negate(value), do: {:error, {:cannot_negate, describe(value)}}
+
   # ── Arithmetic ──────────────────────────────────────────────────────────
 
   # `VAT = 25%` is the only way a sheet gets a rate. There is no configured
