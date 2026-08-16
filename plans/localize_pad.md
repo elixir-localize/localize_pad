@@ -999,8 +999,57 @@ demonstrable and easier to write about; M6 compounds — every locale added mult
 addressable audience for everything built before it.
 
 **M7 — Product. 🔨 Everything but accounts.** Persistence, Markdown export, sharing, keyboard
-shortcuts, the timeline pane and syntax highlighting are done. Outstanding: accounts, sheet
-persistence across devices, and sheetbooks. Deliverable: something deployable.
+shortcuts, the timeline pane, syntax highlighting and the line-number gutter are done.
+Outstanding: deployment, accounts, sheet persistence across devices, and sheetbooks.
+
+**The answers are now localized too, not just the numbers in them.** Almost everything in an
+answer comes from CLDR and was already right. What was left was the three strings this program
+writes itself — `yes`, `no`, and the `N dates` heading a truncated set — and a German sheet
+answering a German question with `5 dates` undercut the whole claim in one word.
+
+They go through `LocalizePad.Gettext`, which is the engine's own backend rather than the web
+layer's: `LocalizePadWeb.Gettext` exists and is correctly configured, but reaching for it from
+`LocalizePad.Value` would point the engine at the web layer, the wrong way round for the part of
+this project most likely to be extracted as a library. The two share `priv/gettext` and separate
+by domain.
+
+Three things fell out of doing it.
+
+*Plural structure belongs to the locale, not to the source language.* The `~t` sigil stores an
+MF2 msgid, so each `.po` carries its own `.match` on a `:number` selector. English needs two
+branches, Japanese one, and Russian would need four — none of which the English source has to
+anticipate. Worth noting the branches for `one` cannot currently fire in any of the five: the
+summary only appears once the set exceeds the four dates the margin shows. They are kept because
+the count they gate is a translator's business rather than this file's, and because a locale
+with a `few` category would fire at counts this one never reaches.
+
+*The count is formatted before it reaches the message.* Passing the integer would let the message
+format it a second time, in whatever locale Gettext resolved rather than the sheet's.
+
+*Gettext does no parent-locale fallback.* A sheet in `de-AT` finds no `de-AT` catalogue and would
+answer in English, so the lookup narrows to the language subtag.
+
+**Deployment target: Fly.io.** What it implies concretely, none of it exotic but all of it easy
+to discover the hard way:
+
+* `mix phx.gen.release --docker` for the release and Dockerfile, then `fly launch`.
+
+* **Postgres** — `fly postgres create` and attach. Note the sheet does not currently use the
+  database at all; it is there for the accounts work and can be skipped until then.
+
+* **The word-break dictionaries must be downloaded at image build time.** They are not vendored,
+  and `mix unicode.string.download.dictionaries` is already a step in `mix setup` and a cache in
+  CI. Miss it in the Dockerfile and Japanese and Thai sheets silently fall back to reading a
+  whole line as one token — the segmentation degrades rather than failing, which is the worst way
+  to find out.
+
+* **The JPL ephemeris that `astro` wants** is cached in CI for the same reason. Decide whether
+  the image carries it or the app tolerates its absence.
+
+* `LOCALIZE_DEFAULT_LOCALE` and `SECRET_KEY_BASE` as secrets; `PHX_HOST` set to the Fly hostname.
+
+* Sharing needs no session affinity — the sheet lives in the URL fragment and `localStorage` —
+  so a single small machine is enough to start, and scaling out needs no sticky sessions.
 
 **Sharing puts the whole sheet in the URL fragment.** No account, no row in a table, no record
 to rot — and a fragment is never sent in an HTTP request, so a shared sheet does not pass

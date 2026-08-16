@@ -14,6 +14,10 @@ defmodule LocalizePad.Value do
 
   """
 
+  use Localize.Message.Sigils,
+    backend: LocalizePad.Gettext,
+    sigils: [domain: "answers"]
+
   alias Localize.Unit
 
   # Answers are rounded for display while the underlying value keeps full
@@ -104,8 +108,11 @@ defmodule LocalizePad.Value do
 
   # `is Friday a workday` deserves a word, not `true`. Not yet a translated
   # message — the answer vocabulary arrives with the operator lexicon in M6.
-  def format(true, _options), do: {:ok, "yes"}
-  def format(false, _options), do: {:ok, "no"}
+  # `is 3 July 2026 a workday` deserves a word, not `true`. The word is
+  # translated: a German sheet answering `ja` is the whole point of the
+  # project, and answering `yes` would undo it in one syllable.
+  def format(true, options), do: {:ok, with_locale(options, fn -> ~t"yes" end)}
+  def format(false, options), do: {:ok, with_locale(options, fn -> ~t"no" end)}
 
   # Some answers are words rather than quantities — a weekday's name, and
   # later an explanation of how a value was read. They are already localized
@@ -269,7 +276,11 @@ defmodule LocalizePad.Value do
 
     if count > length(formatted) do
       {:ok, total} = Localize.Number.to_string(count, locale: locale)
-      "#{total} dates · #{listed} …"
+
+      # The count is already formatted for the locale, so it goes in as text.
+      # Passing the integer would let the message format it a second time, in
+      # whatever locale Gettext happened to resolve.
+      with_locale([locale: locale], fn -> ~t"#{count = total} dates · #{listed} …" end)
     else
       listed
     end
@@ -277,6 +288,26 @@ defmodule LocalizePad.Value do
 
   defp locale_of(options) do
     Keyword.get_lazy(options, :locale, &Localize.get_locale/0)
+  end
+
+  # Gettext takes its locale from the process rather than from an argument, so
+  # the sheet's locale has to be installed for the length of the lookup. Every
+  # other formatter here is passed `locale:` directly; this is the one that
+  # cannot be.
+  defp with_locale(options, fun) do
+    Gettext.with_locale(LocalizePad.Gettext, gettext_locale(locale_of(options)), fun)
+  end
+
+  # Narrowed to the language subtag, because Gettext does no parent-locale
+  # fallback of its own: a sheet in `de-AT` would find no `de-AT` directory and
+  # answer in English, which is exactly the failure this is here to fix. An
+  # unresolvable locale falls back to English rather than raising — a formatter
+  # sits on the render path.
+  defp gettext_locale(locale) do
+    case Localize.validate_locale(locale) do
+      {:ok, language_tag} -> to_string(language_tag.language)
+      {:error, _reason} -> "en"
+    end
   end
 
   defp format_options(options) do

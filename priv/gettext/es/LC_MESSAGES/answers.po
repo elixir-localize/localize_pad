@@ -1,0 +1,28 @@
+## "msgid"s in this file come from POT (.pot) files.
+###
+### Do not add, change, or remove "msgid"s manually here as
+### they're tied to the ones in the corresponding POT file
+### (with the same domain).
+###
+### Use "mix gettext.extract --merge" or "mix gettext.merge"
+### to merge POT files into PO files.
+msgid ""
+msgstr ""
+"Language: es\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: lib/localize_pad/value.ex:115
+#, elixir-autogen, icu-format
+msgid "no"
+msgstr "no"
+
+#: lib/localize_pad/value.ex:114
+#, elixir-autogen, icu-format
+msgid "yes"
+msgstr "sí"
+
+#: lib/localize_pad/value.ex:283
+#, elixir-autogen, icu-format
+msgid "{$count} dates · {$listed} …"
+msgstr ""
+".input {$count :number}\n.match $count\none {{{$count} fecha · {$listed} …}}\n*   {{{$count} fechas · {$listed} …}}\n"

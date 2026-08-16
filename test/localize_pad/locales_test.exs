@@ -120,4 +120,57 @@ defmodule LocalizePad.LocalesTest do
       assert {:unsupported_operation, _op, _left, _right} = answer("99 EUR per week", :fr)
     end
   end
+
+  describe "the words the engine writes itself" do
+    # Everything else in an answer is localized because CLDR supplies it. These
+    # three strings are the ones this program authors, and until they went
+    # through Gettext a German sheet answered a German question in English.
+    alias LocalizePad.Value
+
+    defp summary(source, locale) do
+      [line | _rest] = Sheet.new(source, locale: locale).lines
+
+      line.formatted
+    end
+
+    test "yes and no are translated" do
+      assert Value.format(true, locale: :en) == {:ok, "yes"}
+      assert Value.format(true, locale: :de) == {:ok, "ja"}
+      assert Value.format(true, locale: :fr) == {:ok, "oui"}
+      assert Value.format(true, locale: :es) == {:ok, "sí"}
+      assert Value.format(true, locale: :ja) == {:ok, "はい"}
+
+      assert Value.format(false, locale: :de) == {:ok, "nein"}
+      assert Value.format(false, locale: :ja) == {:ok, "いいえ"}
+    end
+
+    test "a truncated set names its count in the sheet's language" do
+      assert summary("every Monday", :en) =~ "5 dates"
+      assert summary("jeden Montag", :de) =~ "5 Termine"
+      assert summary("chaque lundi", :fr) =~ "5 dates"
+      assert summary("cada lunes", :es) =~ "5 fechas"
+      assert summary("毎週月曜日", :ja) =~ "5件"
+    end
+
+    test "a regional locale reads its language's catalogue" do
+      # Gettext does no parent-locale fallback of its own, so `de-AT` would
+      # find no catalogue and answer in English unless the lookup is narrowed
+      # to the language subtag.
+      assert Value.format(true, locale: :"de-AT") == {:ok, "ja"}
+    end
+
+    test "an unresolvable locale falls back rather than raising" do
+      # A formatter sits on the render path. Whatever arrives here, it answers.
+      assert Value.format(true, locale: :"zz-junk") == {:ok, "yes"}
+      assert Value.format(false, locale: nil) == {:ok, "no"}
+    end
+
+    test "the count is formatted once, by the locale, not twice" do
+      # The number reaches the message already formatted, so a locale that
+      # groups thousands differently still shows its own grouping and not
+      # Gettext's idea of it.
+      assert {:ok, formatted} = Value.format(1234, locale: :de)
+      assert formatted == "1.234"
+    end
+  end
 end
