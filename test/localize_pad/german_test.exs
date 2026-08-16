@@ -102,7 +102,11 @@ defmodule LocalizePad.GermanTest do
   describe "what German shows about the limits" do
     test "an English operator does not work on a German sheet, and should not" do
       # `per` is not a German word. A sheet in German is read in German.
-      assert {:unsupported_operation, _operator, _left, _right} = de("99 EUR per week")
+      #
+      # The refusal names `week`, which is the point: the line asked for a rate
+      # in a word this locale has no reading for, and answering `99,00 €` by
+      # dropping it would look like agreement.
+      assert de("99 EUR per week") == {:unexpected, "week"}
     end
 
     test "one word cannot carry two roles" do

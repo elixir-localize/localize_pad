@@ -187,16 +187,48 @@ defmodule LocalizePad.Parser do
   defp parse_expression_tokens(tokens, variables) do
     case tokens |> skip_noise(variables) |> parse_expression(0, variables) do
       {:ok, ast, rest} ->
-        case skip_noise(rest, variables) do
-          [] -> {:ok, ast}
-          [token | _rest] -> {:error, {:unexpected, token.source}}
-        end
+        leftover(ast, rest, variables)
 
       {:error, :no_expression} ->
         {:error, :no_expression}
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  # What is left after a complete expression. Prose ends the sum: `19 + 22 for
+  # 2 coffees` is forty-one and a remark, and the `2` in the remark is part of
+  # the remark. Once a word we cannot read has been stepped over, everything
+  # past it is commentary — which is the rule the whole tokenizer runs on,
+  # applied to the tail of the line rather than the middle.
+  #
+  # Leftovers that start *without* prose are a genuine parse failure and still
+  # report one, so `2 (1 + 1)` is an error rather than a silent `2`.
+  defp leftover(ast, rest, variables) do
+    case skip_noise(rest, variables) do
+      [] -> {:ok, ast}
+      ^rest -> {:error, {:unexpected, hd(rest).source}}
+      remaining -> discard_or_refuse(ast, remaining)
+    end
+  end
+
+  # Commentary is text with no quantity in it. A trailing *unit* is not
+  # commentary — `99 EUR per week` on a German sheet is somebody asking for a
+  # rate in a word this locale does not know, and answering `99 €` would drop
+  # what they asked for and look like agreement. That refuses, where
+  # `19 + 22 for 2 coffees` answers forty-one: the coffees carry no reading, so
+  # there is nothing to lose by ignoring them.
+  #
+  # A bare number is not enough to count. Numbers appear in prose all the time
+  # — two coffees, three of us — and it is the *unit* that says the writer
+  # meant a quantity rather than a remark.
+  @meaningful [:unit, :money, :percentage, :temporal, :currency, :zone, :calendar, :preference]
+
+  defp discard_or_refuse(ast, remaining) do
+    case Enum.find(remaining, &(&1.kind in @meaningful)) do
+      nil -> {:ok, ast}
+      token -> {:error, {:unexpected, token.source}}
     end
   end
 
@@ -331,17 +363,31 @@ defmodule LocalizePad.Parser do
         {:convert, left, {:preference, locale, usage}}
         |> parse_infix(rest, minimum_binding_power, variables)
 
-      tokens ->
-        infix(left, tokens, minimum_binding_power, variables)
+      remaining ->
+        infix(left, remaining, minimum_binding_power, variables, tokens)
     end
   end
 
   defp parse_infix(left, tokens, minimum_binding_power, variables) do
-    infix(left, skip_noise(tokens, variables), minimum_binding_power, variables)
+    infix(left, skip_noise(tokens, variables), minimum_binding_power, variables, tokens)
   end
 
-  defp infix(left, tokens, minimum_binding_power, variables) do
+  # `original` is the token list before prose was stepped over, and the only
+  # thing that cares is juxtaposition. `19 + 22 for 2 coffees` is one sum and a
+  # remark about coffee, not `22 × 2` — implicit multiplication means two
+  # operands written *next to each other*, and words in between are exactly the
+  # evidence that they were not. `3 meters` still multiplies, because nothing
+  # separates them.
+  #
+  # Stopping hands back `original` rather than the skipped list, so the words
+  # are still there for the caller to treat as trailing prose. Returning the
+  # skipped list instead lets a looser level juxtapose the very operand this
+  # clause just refused, which is how `19 + 22 for 2 coffees` became 82.
+  defp infix(left, tokens, minimum_binding_power, variables, original) do
     case infix_operator(tokens, variables) do
+      {:ok, :juxtapose, _binding_powers, _rest} when tokens != original ->
+        {:ok, left, original}
+
       {:ok, operator, {left_binding_power, right_binding_power}, rest}
       when left_binding_power >= minimum_binding_power ->
         with {:ok, right, rest} <- parse_expression(rest, right_binding_power, variables) do
@@ -459,8 +505,12 @@ defmodule LocalizePad.Parser do
            ] ->
         true
 
+      # A parenthesis can open a conversion target; a sign cannot. Nothing is
+      # ever converted *to* a signed number, and counting `+` here read the
+      # `in` of `3 in + 2 in` as a conversion — which asked to convert three of
+      # nothing into two inches and refused the line.
       [%Token{kind: :operator, value: operator} | _rest] ->
-        operator in [:lparen, :minus, :plus]
+        operator == :lparen
 
       [%Token{kind: :keyword} = token | _rest] ->
         Token.is?(token, :unit)

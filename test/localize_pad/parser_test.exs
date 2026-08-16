@@ -144,4 +144,59 @@ defmodule LocalizePad.ParserTest do
       assert parse("(2 + 3") == {:error, :unclosed_parenthesis}
     end
   end
+
+  describe "prose does not join what it separates" do
+    defp reads(source) do
+      [line] = LocalizePad.Sheet.new(source, locale: :en).lines
+
+      line.formatted || line.error
+    end
+
+    test "a number inside trailing prose is part of the prose" do
+      # `19 + 22 for 2 coffees` was 82 — the trailing `2` juxtaposed onto the
+      # sum. Implicit multiplication means two operands written next to each
+      # other, and the words in between are the evidence that they were not.
+      assert reads("19 + 22 for 2 coffees") == "41"
+      assert reads("19 + 22 for breakfast") == "41"
+    end
+
+    test "but adjacent operands still multiply" do
+      assert reads("3 meters") == "3 meters"
+      assert reads("100 kg * 9.8 m/s^2") == "980 kilogram-meter-per-square-second"
+    end
+
+    test "a trailing quantity is meaning, not commentary" do
+      # The line asked for something the sheet cannot give. Dropping `km` to
+      # answer `19` would look like agreement.
+      assert reads("19 + 22 for 2 km") == {:unexpected, "km"}
+    end
+
+    test "leftovers that never began as prose are still an error" do
+      assert reads("2 (1 + 1)") == {:unexpected, "("}
+    end
+  end
+
+  describe "the two readings of `in`" do
+    test "prose after it means it is a preposition, not an inch" do
+      # `12 items in the basket` answered `12 inches`.
+      assert reads("12 items in the basket") == "12"
+      assert reads("19 + 22 in cash") == "41"
+    end
+
+    test "it is still an inch where nothing follows" do
+      assert reads("3 in") == "3 inches"
+    end
+
+    test "and a sum of inches is a sum, not a conversion" do
+      # `3 in + 2 in` was refused: the `+` counted as an operand following the
+      # first `in`, so the line read as converting three of nothing into two
+      # inches. Nothing is ever converted *to* a signed number.
+      assert reads("3 in + 2 in") == "5 inches"
+    end
+
+    test "a real conversion is untouched" do
+      assert reads("100 celsius in fahrenheit") == "212 degrees Fahrenheit"
+      assert reads("3 meters to feet") == "9.84252 feet"
+    end
+  end
 end

@@ -96,7 +96,9 @@ defmodule LocalizePad.TelemetryTest do
       shape =
         1..50
         |> Enum.map_join(" ", fn n -> "word#{n} #{n}" end)
-        |> Kernel.<>(" +")
+        # Ends on a unit so the line is still refused: trailing prose alone is
+        # now discarded as commentary, and a line that answers reports nothing.
+        |> Kernel.<>(" + km")
         |> refusals()
         |> List.last()
         |> Map.fetch!(:shape)
