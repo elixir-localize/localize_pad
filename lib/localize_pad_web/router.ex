@@ -19,10 +19,24 @@ defmodule LocalizePadWeb.Router do
 
     plug Localize.Plug.PutSession
 
+    # A stable id for this browser session, so the windows a person has open
+    # can find each other. Minted here rather than derived from anything
+    # existing: the session cookie is signed, so this cannot be forged into
+    # somebody else's, and a *missing* id must never collapse into a shared
+    # default — that would put strangers on one topic.
+    plug :put_session_id
+
     plug :fetch_live_flash
     plug :put_root_layout, html: {LocalizePadWeb.Layouts, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
+  end
+
+  defp put_session_id(conn, _options) do
+    case get_session(conn, "session_id") do
+      nil -> put_session(conn, "session_id", Base.url_encode64(:crypto.strong_rand_bytes(16)))
+      _already_has_one -> conn
+    end
   end
 
   pipeline :api do

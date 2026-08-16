@@ -81,11 +81,36 @@ defmodule LocalizePadWeb.SheetLive do
   is capped at about 4 KB, which a working sheet exceeds sooner than anyone
   expects, and it would fail by silently truncating.
 
+  ## Windows of one session move together
+
+  Every browser window is its own LiveView process with its own assigns —
+  LiveView synchronises nothing between them by default, and a shared session
+  cookie does not change that. So the windows are joined explicitly: each
+  subscribes to a PubSub topic derived from a per-session id, and every event
+  that changes the document publishes to it.
+
+  The topic comes from a signed session cookie, so it cannot be forged into
+  somebody else's, and a request arriving without an id publishes nothing at
+  all rather than falling back to a shared topic — that default would have put
+  strangers on one channel.
+
+  This does mean the server now *sees* sheet contents in transit, where before
+  it never did. It still stores none, and the sharing link is still a fragment
+  the server never receives. But the flat claim that a sheet never reaches the
+  server is no longer true, and the section below says so where it used to
+  claim otherwise.
+
+  Conflicts are resolved last-write-wins, tempered by one rule: a window whose
+  textarea has focus ignores incoming changes. The person actually typing is
+  the better authority for that moment, and without it the last window to
+  render would win an argument with the one being used. Genuine concurrent
+  editing of the same line is not solved here and would need a CRDT.
+
   ## Sharing
 
   The whole sheet goes into the URL fragment, so a link needs no account and
-  leaves no record. A fragment is never sent to the server, which means the
-  hook has to read it and hand it over — see `LocalizePad.Share`.
+  leaves no record. A fragment is never sent in an HTTP request, so a shared
+  link does not pass through the server's logs — see `LocalizePad.Share`.
 
   A shared link beats whatever is in `localStorage`: someone who follows a link
   wants the sheet in the link.
@@ -134,11 +159,17 @@ defmodule LocalizePadWeb.SheetLive do
   """
 
   @impl Phoenix.LiveView
-  def mount(_params, _session, socket) do
+  def mount(_params, session, socket) do
     locale = current_locale()
+    topic = topic(session)
+
+    # Only once connected: the first, static render has no process to keep a
+    # subscription for.
+    if connected?(socket) and topic, do: Phoenix.PubSub.subscribe(LocalizePad.PubSub, topic)
 
     {:ok,
      socket
+     |> assign(:topic, topic)
      |> assign(:locale, locale)
      |> assign(:source, @sample)
      |> assign(:locale_options, locale_options())
@@ -149,12 +180,13 @@ defmodule LocalizePadWeb.SheetLive do
 
   @impl Phoenix.LiveView
   def handle_event("edit", %{"source" => source}, socket) do
-    {:noreply, socket |> assign(:source, source) |> recalculate()}
+    {:noreply, socket |> assign(:source, source) |> recalculate() |> publish()}
   end
 
   # Sent by the storage hook on mount when the browser has a sheet saved.
   def handle_event("restore", %{"source" => source}, socket) when is_binary(source) do
-    {:noreply, socket |> assign(:source, source) |> assign(:selected, nil) |> recalculate()}
+    {:noreply,
+     socket |> assign(:source, source) |> assign(:selected, nil) |> recalculate() |> publish()}
   end
 
   # A link the browser has just been opened with. It wins over stored state.
@@ -168,7 +200,8 @@ defmodule LocalizePadWeb.SheetLive do
          |> assign(:source, source)
          |> assign(:locale, locale)
          |> assign(:selected, nil)
-         |> recalculate()}
+         |> recalculate()
+         |> publish()}
 
       # A link may be truncated by a chat client or simply made up. Leaving the
       # sheet as it was beats failing the page.
@@ -199,7 +232,8 @@ defmodule LocalizePadWeb.SheetLive do
          |> assign(:source, source)
          |> assign(:locale, locale)
          |> assign(:selected, nil)
-         |> recalculate()}
+         |> recalculate()
+         |> publish()}
 
       # Somebody opened a photograph. Leaving the sheet alone beats clearing it.
       {:error, :empty} ->
@@ -218,7 +252,8 @@ defmodule LocalizePadWeb.SheetLive do
          |> assign(:source, example.source)
          |> assign(:locale, locale)
          |> assign(:selected, nil)
-         |> recalculate()}
+         |> recalculate()
+         |> publish()}
 
       :error ->
         {:noreply, socket}
@@ -252,13 +287,56 @@ defmodule LocalizePadWeb.SheetLive do
         {:noreply,
          socket
          |> assign(:locale, language_tag.cldr_locale_id)
-         |> recalculate()}
+         |> recalculate()
+         |> publish()}
 
       # An unknown locale simply leaves the sheet as it was. Nothing the picker
       # can send should be able to break a document.
       {:error, _reason} ->
         {:noreply, socket}
     end
+  end
+
+  @impl Phoenix.LiveView
+  def handle_info({:sheet, from, source, locale}, socket) when from != self() do
+    # Another window of this session changed the sheet. The locale travels with
+    # it because it decides what the numbers *mean* — mirroring the text while
+    # leaving the locale behind would show the other window different answers.
+    Localize.put_locale(locale)
+
+    {:noreply,
+     socket
+     |> assign(:source, source)
+     |> assign(:locale, locale)
+     |> assign(:selected, nil)
+     |> recalculate()
+     |> push_event("remote", %{source: source})}
+  end
+
+  # Our own broadcast coming back. PubSub has no exclude-self, so the guard
+  # above does it, and this clause keeps the unmatched message from crashing
+  # the view.
+  def handle_info({:sheet, _from, _source, _locale}, socket), do: {:noreply, socket}
+
+  # The other windows of this session, and nobody else's. A session with no id
+  # publishes nothing rather than falling back to a shared topic.
+  defp topic(session) do
+    case session do
+      %{"session_id" => id} when is_binary(id) -> "sheet:" <> id
+      _no_session -> nil
+    end
+  end
+
+  defp publish(%{assigns: %{topic: nil}} = socket), do: socket
+
+  defp publish(socket) do
+    Phoenix.PubSub.broadcast(
+      LocalizePad.PubSub,
+      socket.assigns.topic,
+      {:sheet, self(), socket.assigns.source, socket.assigns.locale}
+    )
+
+    socket
   end
 
   defp recalculate(socket) do
@@ -568,6 +646,20 @@ defmodule LocalizePadWeb.SheetLive do
           this.shortcuts(textarea)
           this.syncScroll(textarea)
           this.openFile()
+
+          // A sibling window changed the sheet.
+          this.handleEvent("remote", ({source}) => {
+            // Not while this window is the one being typed in. Overwriting a
+            // focused textarea would take the caret and lose the half-finished
+            // line — and the person typing is the better authority for the
+            // moment. This is last-write-wins, and the focus check is what
+            // keeps that from meaning "last window to render wins".
+            if (document.activeElement === textarea) return
+            if (textarea.value === source) return
+
+            textarea.value = source
+            window.localStorage.setItem(KEY, source)
+          })
 
           this.handleEvent("download", ({filename, content}) => {
             this.save(filename, content, "text/markdown")

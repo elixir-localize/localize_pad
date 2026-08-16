@@ -148,6 +148,89 @@ defmodule LocalizePadWeb.SheetLiveTest do
     end
   end
 
+  describe "windows of one session" do
+    # Two windows of a session mirror each other. The property that matters
+    # more than the feature is that *only* they do: the topic is derived from a
+    # signed session cookie, and a session without one publishes nothing rather
+    # than falling back to a shared default.
+    defp session_topic(conn) do
+      "sheet:" <> Plug.Conn.get_session(conn, "session_id")
+    end
+
+    test "an edit in one window reaches the other" do
+      conn = get(build_conn(), ~p"/")
+      {:ok, live, _html} = live(conn)
+
+      Phoenix.PubSub.broadcast(
+        LocalizePad.PubSub,
+        session_topic(conn),
+        {:sheet, self(), "19 + 22", :en}
+      )
+
+      assert render(live) =~ "41"
+    end
+
+    test "the locale travels with the text" do
+      # `1.234,5` is a different number in `de`. Mirroring the text without the
+      # locale would show the other window different answers from the one that
+      # sent it, which is worse than not syncing at all.
+      conn = get(build_conn(), ~p"/")
+      {:ok, live, _html} = live(conn)
+
+      Phoenix.PubSub.broadcast(
+        LocalizePad.PubSub,
+        session_topic(conn),
+        {:sheet, self(), "1.234,5 + 1", :de}
+      )
+
+      html = render(live)
+      assert html =~ "1.235,5"
+      assert html =~ ~s(value="de" selected)
+    end
+
+    test "another session's edit is not received" do
+      conn = get(build_conn(), ~p"/")
+      {:ok, live, _html} = live(conn)
+
+      render_change(live, :edit, %{"source" => "19 + 22"})
+
+      Phoenix.PubSub.broadcast(
+        LocalizePad.PubSub,
+        "sheet:somebody-else-entirely",
+        {:sheet, self(), "99 + 1", :en}
+      )
+
+      html = render(live)
+      assert html =~ "41"
+      refute html =~ "100"
+    end
+
+    test "two sessions get different topics" do
+      first = get(build_conn(), ~p"/")
+      second = get(build_conn(), ~p"/")
+
+      assert session_topic(first) != session_topic(second)
+    end
+
+    test "a session id survives across requests" do
+      conn = get(build_conn(), ~p"/")
+      again = conn |> recycle() |> get(~p"/")
+
+      assert session_topic(conn) == session_topic(again)
+    end
+
+    test "editing broadcasts, and does not echo back to the sender" do
+      conn = get(build_conn(), ~p"/")
+      {:ok, live, _html} = live(conn)
+
+      Phoenix.PubSub.subscribe(LocalizePad.PubSub, session_topic(conn))
+      render_change(live, :edit, %{"source" => "19 + 22"})
+
+      assert_receive {:sheet, from, "19 + 22", :en}
+      refute from == self()
+    end
+  end
+
   describe "the examples" do
     test "they are offered by name" do
       {:ok, _live, html} = live(build_conn(), ~p"/")
