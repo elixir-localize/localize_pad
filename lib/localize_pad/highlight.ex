@@ -163,6 +163,22 @@ defmodule LocalizePad.Highlight do
   # or leading space.
   defp prefix(_line, ""), do: []
   defp prefix(%Line{label: nil, name: nil}, text), do: [{nil, text}]
+
+  # The name being *bound* is the most useful thing on a declaration line, and
+  # it was the dimmest — labels are muted, and a name shared that class. It now
+  # takes the colour its own references take, so the eye can follow one name
+  # from where it is defined to everywhere it is used.
+  #
+  # Split on the `=` rather than on the parsed name: a name may be several
+  # words with any spacing between them (`monthly  rent`), and the parsed form
+  # has already collapsed that, so it cannot be measured against the source.
+  defp prefix(%Line{name: name}, text) when not is_nil(name) do
+    case String.split(text, "=", parts: 2) do
+      [bound, rest] -> [{:definition, bound}, {:label, "=" <> rest}]
+      [_no_equals] -> [{:label, text}]
+    end
+  end
+
   defp prefix(_line, text), do: [{:label, text}]
 
   defp split_comment(source) do
@@ -215,6 +231,16 @@ defmodule LocalizePad.Highlight do
       :error ->
         [{hd(tokens), :word} | classify(tl(tokens), variables)]
     end
+  end
+
+  # A declared name that is also a unit resolves as the variable — see
+  # `LocalizePad.Parser` — so it has to colour as one. A highlighter that
+  # showed `week` as a unit while the engine read it as 5 would be reporting
+  # on a parse that never happened.
+  defp classify([%Token{kind: :unit, source: source} = token | rest], variables) do
+    class = if MapSet.member?(variables, source), do: :variable, else: :unit
+
+    [{token, class} | classify(rest, variables)]
   end
 
   defp classify([token | rest], variables) do

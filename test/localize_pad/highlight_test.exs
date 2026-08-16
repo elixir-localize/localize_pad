@@ -145,4 +145,48 @@ defmodule LocalizePad.HighlightTest do
              ]
     end
   end
+
+  describe "a name where it is bound" do
+    # `classes/2` above works a single line; these need the sheet, because a
+    # name only counts as bound from the line below its declaration.
+    defp bound_classes(source) do
+      source
+      |> Highlight.lines(locale: :en)
+      |> Enum.map(fn segments -> Enum.map(segments, &elem(&1, 0)) end)
+    end
+
+    test "the definition is marked, not dimmed like a label" do
+      # It was sharing the muted `:label` class, which made the most useful
+      # thing on the line the least visible one.
+      [declaration, _use] = bound_classes("VAT = 10%\nVAT on $300")
+
+      assert :definition in declaration
+    end
+
+    test "a multi-word name is covered whole" do
+      assert [[:definition, :label, :number]] = bound_classes("monthly  rent = 550")
+    end
+
+    test "a label is still a label" do
+      [segments] = bound_classes("Breakfast: 19 + 22")
+
+      assert :label in segments
+      refute :definition in segments
+    end
+
+    test "and a declared name colours as the variable the engine reads" do
+      # The parser resolves a declared name over the unit dictionary, so the
+      # colours have to say the same thing.
+      [_declaration, use] = bound_classes("week = 5\nweek * 2")
+
+      assert :variable in use
+      refute :unit in use
+    end
+
+    test "while an undeclared one is still a unit" do
+      [segments] = bound_classes("3 weeks")
+
+      assert :unit in segments
+    end
+  end
 end

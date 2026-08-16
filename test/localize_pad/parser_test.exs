@@ -160,9 +160,24 @@ defmodule LocalizePad.ParserTest do
       assert reads("19 + 22 for breakfast") == "41"
     end
 
+    test "two bare numbers are not a product" do
+      # `2 3` is not how anyone writes six, and reading it as one cost real
+      # answers: `5 000` was `0` and `19 22` was `418`. Both are far likelier
+      # to be a number whose thousands are grouped with a space, which is how
+      # French and a dozen other locales write them.
+      #
+      # Refusing is the honest interim: the scanner cannot yet read the space
+      # as a group separator, so the line has no reading rather than a wrong
+      # one.
+      assert reads("5 000") == {:unexpected, "0"}
+      assert reads("19 22") == {:unexpected, "22"}
+    end
+
     test "but adjacent operands still multiply" do
       assert reads("3 meters") == "3 meters"
       assert reads("100 kg * 9.8 m/s^2") == "980 kilogram-meter-per-square-second"
+      assert reads("12 ft + 3 in") == "12.25 feet"
+      assert reads("1 hour + 45 minutes") == "1.75 hours"
     end
 
     test "a trailing operator is meaning, not commentary" do

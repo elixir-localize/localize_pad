@@ -271,6 +271,14 @@
   color: var(--color-warning);
 }
 
+/* A name where it is bound, in the same colour as every reference to it —
+   one name, one colour, wherever it appears. The weight marks which of them
+   is the definition. */
+.tok-definition {
+  color: var(--color-warning);
+  font-weight: 600;
+}
+
 .tok-heading {
   font-weight: 600;
 }

@@ -434,8 +434,12 @@ defmodule LocalizePad.Parser do
           |> parse_infix(rest, minimum_binding_power, variables)
         end
 
+      # Nothing here continues the expression, so the prose that was stepped
+      # over on the way in was never consumed. Hand back the tokens as they
+      # arrived, or the caller sees a leftover starting mid-remark and reports
+      # the wrong word — `19 + 22 for 2 coffees` blamed the `2`.
       _stop ->
-        {:ok, left, tokens}
+        {:ok, left, original}
     end
   end
 
@@ -492,8 +496,18 @@ defmodule LocalizePad.Parser do
 
   # Anything that could begin an operand, sitting next to the previous operand,
   # is implicit multiplication: `3 meters`, `kg m`, `2 (1 + 1)`.
+  #
+  # A bare number is deliberately absent. Two numbers side by side is a reading
+  # nobody writes — `2 3` is not how anyone means six — and it was actively
+  # harmful: `5 000` answered `0`, and `19 22` answered `418`. Both are far
+  # likelier to be a number written with a space between its groups, which is
+  # how French and a dozen other locales group thousands.
+  #
+  # `3 meters` still multiplies. The juxtaposition there is triggered by the
+  # *unit*, not by the number before it, so removing numbers from this list
+  # costs none of the cases the rule exists for.
   defp infix_operator([%Token{kind: kind} | _rest] = tokens, _variables)
-       when kind in [:number, :unit, :line_ref, :temporal, :zone, :percentage, :money] do
+       when kind in [:unit, :line_ref, :temporal, :zone, :percentage, :money] do
     {:ok, :juxtapose, @juxtaposition, tokens}
   end
 
