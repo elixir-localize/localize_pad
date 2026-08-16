@@ -10,6 +10,40 @@ defmodule LocalizePadWeb.SheetLive do
   — a wrapped line would occupy two rows on the left and one on the right, and
   every answer below it would drift. Long lines scroll horizontally instead.
 
+  ## The editor is two layers
+
+  Syntax highlighting means colouring text, and a `<textarea>` cannot colour
+  its own contents. The usual answer is to replace it with a code editor —
+  CodeMirror was the plan — but that trades away the one property this layout
+  depends on: a textarea's line boxes are what the answer column is aligned
+  against, and an editor that renders lines its own way puts that at risk for
+  benefits this language does not need.
+
+  So the textarea stays and gains a layer beneath it: the same text, coloured,
+  drawn by `LocalizePad.Highlight` from the engine's own tokens. The textarea
+  above it keeps its caret and its selection and gives up only its text colour.
+
+  The two layers must agree byte for byte on every metric — font, size, line
+  height, padding, wrapping — and on scroll position, which is why the hook
+  follows one with the other. A character of disagreement is a character of
+  drift, and it compounds along the line.
+
+  ## The gutter numbers every line
+
+  `@3` is the answer on line 3, and without a gutter the only way to find the
+  number is to count. So the numbers are there, dim enough to read past.
+
+  They count *every* physical line — blanks, headings, comments — because that
+  is what `@n` counts. Numbering only the lines that carry an answer would look
+  tidier and would be a lie, and a lie about line numbers is one the reader
+  cannot catch: `@3` would quietly resolve to something other than the row
+  labelled 3.
+
+  The gutter follows the text vertically and stays put horizontally. Scrolling
+  a long line to the right must not carry the line numbers off the edge with
+  it, which is the one way this differs from the highlight layer beneath the
+  textarea.
+
   ## Recalculation
 
   Every keystroke re-evaluates the sheet, debounced so a fast typist sends
@@ -36,6 +70,15 @@ defmodule LocalizePadWeb.SheetLive do
   is capped at about 4 KB, which a working sheet exceeds sooner than anyone
   expects, and it would fail by silently truncating.
 
+  ## Sharing
+
+  The whole sheet goes into the URL fragment, so a link needs no account and
+  leaves no record. A fragment is never sent to the server, which means the
+  hook has to read it and hand it over — see `LocalizePad.Share`.
+
+  A shared link beats whatever is in `localStorage`: someone who follows a link
+  wants the sheet in the link.
+
   ## Answers that do not fit
 
   Some answers are sets. `every Friday the 13th` is five dates, and a margin
@@ -51,14 +94,14 @@ defmodule LocalizePadWeb.SheetLive do
 
   use LocalizePadWeb, :live_view
 
-  alias LocalizePad.{Sheet, Value}
+  alias LocalizePad.{Highlight, Share, Sheet, Timeline, Value}
 
   @sample """
   # A first sheet
 
   Breakfast: 19 + 22
   hotel = 120
-  hotel * 3 nights
+  hotel * 3 for the whole stay
   sum
 
   // Anything after two slashes is ignored
@@ -92,6 +135,36 @@ defmodule LocalizePadWeb.SheetLive do
   # Sent by the storage hook on mount when the browser has a sheet saved.
   def handle_event("restore", %{"source" => source}, socket) when is_binary(source) do
     {:noreply, socket |> assign(:source, source) |> assign(:selected, nil) |> recalculate()}
+  end
+
+  # A link the browser has just been opened with. It wins over stored state.
+  def handle_event("open_shared", %{"payload" => payload}, socket) do
+    case Share.decode(payload) do
+      {:ok, source, locale} ->
+        Localize.put_locale(locale)
+
+        {:noreply,
+         socket
+         |> assign(:source, source)
+         |> assign(:locale, locale)
+         |> assign(:selected, nil)
+         |> recalculate()}
+
+      # A link may be truncated by a chat client or simply made up. Leaving the
+      # sheet as it was beats failing the page.
+      :error ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_event("share", _params, socket) do
+    payload = Share.encode(socket.assigns.source, socket.assigns.locale)
+
+    {:noreply, push_event(socket, "share", %{payload: payload})}
+  end
+
+  def handle_event("dismiss", _params, socket) do
+    {:noreply, socket |> assign(:selected, nil) |> assign(:detail, nil)}
   end
 
   def handle_event("download", _params, socket) do
@@ -135,6 +208,7 @@ defmodule LocalizePadWeb.SheetLive do
 
     socket
     |> assign(:sheet, sheet)
+    |> assign(:highlighted, Highlight.lines(socket.assigns.source, locale: socket.assigns.locale))
     |> assign(:total, format_total(sheet, socket.assigns.locale))
     |> assign(:detail, detail_for(sheet, socket.assigns[:selected], socket.assigns.locale))
   end
@@ -144,11 +218,51 @@ defmodule LocalizePadWeb.SheetLive do
   defp detail_for(sheet, index, locale) do
     with %{value: value} = line when not is_nil(value) <- Enum.at(sheet.lines, index),
          {:ok, parts} <- Value.detail(value, locale: locale) do
-      %{line: line, parts: parts, kind: Value.kind(value)}
+      %{
+        line: line,
+        parts: parts,
+        kind: Value.kind(value),
+        timeline: timeline_for(value, locale)
+      }
     else
       _nothing_to_show -> nil
     end
   end
+
+  # Most answers have no position in time, so most panels have no timeline.
+  defp timeline_for(value, locale) do
+    case Timeline.build(value, locale: locale) do
+      {:ok, timeline} -> timeline
+      :error -> nil
+    end
+  end
+
+  # A point in time has no width to draw, and a run of them would vanish
+  # entirely. The floor is the smallest mark that still reads as a mark.
+  defp percent(fraction) do
+    fraction |> max(0.0) |> min(1.0) |> Kernel.*(100) |> Float.round(3)
+  end
+
+  defp mark_width(fraction) do
+    fraction |> percent() |> max(0.8)
+  end
+
+  # Which clock the axis is drawn against, but only when it could be a
+  # surprise. A day-scale axis has no clock worth naming, and UTC is what an
+  # unzoned sheet already assumes — saying so would be noise on almost every
+  # timeline in order to be useful on the few that cross zones.
+  defp zone_label(%{unit: :hour, zone: zone}) when zone != "Etc/UTC" do
+    zone |> String.split("/") |> List.last() |> String.replace("_", " ")
+  end
+
+  defp zone_label(_timeline), do: nil
+
+  # Tick labels are centred on their tick, which puts half of the first one
+  # off the left edge and half of the last off the right. The two at the ends
+  # hang inward instead.
+  defp tick_alignment(at) when at < 0.05, do: "translate-x-0"
+  defp tick_alignment(at) when at > 0.95, do: "-translate-x-full"
+  defp tick_alignment(_at), do: "-translate-x-1/2"
 
   defp format_total(sheet, locale) do
     case Sheet.total(sheet) do
@@ -194,9 +308,18 @@ defmodule LocalizePadWeb.SheetLive do
         <div class="flex items-center gap-3">
           <button
             type="button"
+            phx-click="share"
+            class="btn btn-sm btn-ghost"
+            title="Copy a link to this sheet"
+          >
+            Share
+          </button>
+
+          <button
+            type="button"
             phx-click="download"
             class="btn btn-sm btn-ghost"
-            title="Download this sheet as Markdown"
+            title="Download this sheet as Markdown (⌘S)"
           >
             Download
           </button>
@@ -224,15 +347,30 @@ defmodule LocalizePadWeb.SheetLive do
 
       <form id="sheet" phx-hook=".SheetStorage" phx-change="edit" class="min-h-0 flex-1">
         <div class="flex h-full overflow-hidden rounded-lg border border-base-300">
-          <textarea
-            name="source"
-            phx-debounce="150"
-            wrap="off"
-            spellcheck="false"
-            autocomplete="off"
-            aria-label="Sheet"
-            class="sheet-text w-3/5 resize-none overflow-auto border-0 bg-transparent p-4 focus:outline-none focus:ring-0"
-          >{@source}</textarea>
+          <div class="sheet-editor w-3/5">
+            <pre id="gutter" class="sheet-text sheet-gutter" aria-hidden="true"><code
+              :for={number <- 1..length(@highlighted)//1}
+            >{number}{"\n"}</code></pre>
+
+            <div class="sheet-layers">
+              <pre id="highlight" class="sheet-text sheet-highlight" aria-hidden="true"><code
+                :for={segments <- @highlighted}
+              ><span
+                  :for={{class, text} <- segments}
+                  class={class && "tok-#{class}"}
+                >{text}</span>{"\n"}</code></pre>
+
+              <textarea
+                name="source"
+                phx-debounce="150"
+                wrap="off"
+                spellcheck="false"
+                autocomplete="off"
+                aria-label="Sheet"
+                class="sheet-text sheet-input resize-none border-0 bg-transparent focus:outline-none focus:ring-0"
+              >{@source}</textarea>
+            </div>
+          </div>
 
           <div class="sheet-answers w-2/5 overflow-auto border-l border-base-300 bg-base-200/40 p-4 text-right">
             <div
@@ -266,6 +404,39 @@ defmodule LocalizePadWeb.SheetLive do
         <ol class="sheet-text flex flex-wrap gap-x-6 gap-y-1">
           <li :for={part <- @detail.parts}>{part}</li>
         </ol>
+
+        <figure :if={@detail.timeline} class="mt-4">
+          <figcaption :if={zone_label(@detail.timeline)} class="mb-1 text-xs opacity-50">
+            Times shown in {zone_label(@detail.timeline)}
+          </figcaption>
+
+          <div class="relative h-8 rounded border border-base-300 bg-base-100">
+            <div
+              :for={tick <- @detail.timeline.ticks}
+              class="absolute top-0 h-full border-l border-base-300/70"
+              style={"left: #{percent(tick.at)}%"}
+              aria-hidden="true"
+            >
+            </div>
+            <div
+              :for={mark <- @detail.timeline.marks}
+              class="absolute top-1 h-6 rounded-sm bg-primary/70"
+              style={"left: #{percent(mark.start)}%; width: #{mark_width(mark.width)}%"}
+              title={mark.label}
+            >
+            </div>
+          </div>
+
+          <figcaption class="relative mt-1 h-4 text-xs opacity-50">
+            <span
+              :for={tick <- @detail.timeline.ticks}
+              class={["absolute whitespace-nowrap", tick_alignment(tick.at)]}
+              style={"left: #{percent(tick.at)}%"}
+            >
+              {tick.label}
+            </span>
+          </figcaption>
+        </figure>
       </section>
 
       <footer class="mt-3 flex justify-end text-sm">
@@ -278,10 +449,39 @@ defmodule LocalizePadWeb.SheetLive do
 
     <script :type={Phoenix.LiveView.ColocatedHook} name=".SheetStorage">
       const KEY = "localize_pad.sheet"
+      const FRAGMENT = "#s="
 
       export default {
         mounted() {
           const textarea = this.el.querySelector("textarea[name=source]")
+
+          this.restore(textarea)
+          this.persist(textarea)
+          this.shortcuts(textarea)
+          this.syncScroll(textarea)
+
+          this.handleEvent("download", ({filename, content}) => {
+            this.save(filename, content, "text/markdown")
+          })
+
+          this.handleEvent("share", ({payload}) => {
+            const url = window.location.origin + window.location.pathname + FRAGMENT + payload
+
+            window.history.replaceState(null, "", url)
+            navigator.clipboard && navigator.clipboard.writeText(url)
+          })
+        },
+
+        // A link beats stored state: someone who follows a link wants the
+        // sheet in the link.
+        restore(textarea) {
+          const hash = window.location.hash
+
+          if (hash.startsWith(FRAGMENT)) {
+            this.pushEvent("open_shared", {payload: hash.slice(FRAGMENT.length)})
+            return
+          }
+
           const saved = window.localStorage.getItem(KEY)
 
           // Only replace the server's sample when there is something to
@@ -290,24 +490,81 @@ defmodule LocalizePadWeb.SheetLive do
             textarea.value = saved
             this.pushEvent("restore", {source: saved})
           }
+        },
 
-          // Save on input rather than on the debounced change, so a reload
-          // immediately after typing does not lose the last keystrokes.
+        // The coloured layer is a separate scroll box from the textarea over
+        // it, so it has to be told where the textarea got to. Without this a
+        // long line scrolls the text the user is editing away from its own
+        // colours.
+        syncScroll(textarea) {
+          const highlight = this.el.querySelector("#highlight")
+          const gutter = this.el.querySelector("#gutter")
+          if (!highlight) return
+
+          const follow = () => {
+            highlight.scrollTop = textarea.scrollTop
+            highlight.scrollLeft = textarea.scrollLeft
+            // The gutter follows vertically only. Scrolling a long line right
+            // must not carry the line numbers off the edge with it.
+            if (gutter) gutter.scrollTop = textarea.scrollTop
+          }
+
+          textarea.addEventListener("scroll", follow)
+          textarea.addEventListener("input", follow)
+          this.handleEvent("scroll-sync", follow)
+          follow()
+        },
+
+        // Save on input rather than on the debounced change, so a reload
+        // immediately after typing does not lose the last keystrokes.
+        persist(textarea) {
           this.el.addEventListener("input", () => {
             window.localStorage.setItem(KEY, textarea.value)
           })
+        },
 
-          this.handleEvent("download", ({filename, content}) => {
-            const url = URL.createObjectURL(new Blob([content], {type: "text/markdown"}))
-            const link = document.createElement("a")
+        shortcuts(textarea) {
+          textarea.addEventListener("keydown", (event) => {
+            const meta = event.metaKey || event.ctrlKey
 
-            link.href = url
-            link.download = filename
-            document.body.appendChild(link)
-            link.click()
-            link.remove()
-            URL.revokeObjectURL(url)
+            if (meta && event.key === "s") {
+              event.preventDefault()
+              this.pushEvent("download", {})
+            } else if (meta && event.key === "\\") {
+              event.preventDefault()
+              this.insertReference(textarea)
+            } else if (event.key === "Escape") {
+              this.pushEvent("dismiss", {})
+            }
           })
+        },
+
+        // ⌘\ inserts a reference to the line above the cursor, which is the
+        // one people mean when they reach for it.
+        insertReference(textarea) {
+          const before = textarea.value.slice(0, textarea.selectionStart)
+          const line = before.split("\n").length
+
+          if (line < 2) return
+
+          const reference = "@" + (line - 1)
+          const after = textarea.value.slice(textarea.selectionEnd)
+
+          textarea.value = before + reference + after
+          textarea.selectionStart = textarea.selectionEnd = before.length + reference.length
+          textarea.dispatchEvent(new Event("input", {bubbles: true}))
+        },
+
+        save(filename, content, type) {
+          const url = URL.createObjectURL(new Blob([content], {type}))
+          const link = document.createElement("a")
+
+          link.href = url
+          link.download = filename
+          document.body.appendChild(link)
+          link.click()
+          link.remove()
+          URL.revokeObjectURL(url)
         }
       }
     </script>

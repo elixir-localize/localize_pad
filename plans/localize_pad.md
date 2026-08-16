@@ -494,9 +494,44 @@ on every keystroke with no equals key.
 * **v1 — `<textarea>` + mirrored answer column.** Locked line-height between columns, answers
   rendered from the engine's per-line results. `phx-change` with `phx-debounce="150"`. Gets 90%
   of the feel for 10% of the work. Ship this first and use it to shake out the language.
-* **v2 — CodeMirror 6 via `phx-hook`.** Buys syntax highlighting (token spans come free from
-  stage 2), line references rendered as inline chips, hover-to-peek on variables, click-an-answer
-  to insert a reference. Sends line-level diffs rather than whole-document changes.
+* ~~**v2 — CodeMirror 6 via `phx-hook`.**~~ **Superseded.** Syntax highlighting shipped without
+  it, as a coloured layer *beneath* the textarea rather than a replacement for it. See below.
+
+**Why not CodeMirror after all.** The plan assumed highlighting required an editor component.
+It required token spans, which is a different thing — and once those existed, the cheapest way
+to draw them was a `<pre>` behind a transparent textarea.
+
+That keeps the property this whole layout rests on: the answer column is aligned against the
+textarea's own line boxes, and an editor that renders lines its own way puts that at risk. It
+also keeps IME, mobile keyboards, native undo and selection, all of which a custom editor
+re-implements imperfectly. What it gives up — bracket matching, inline chips, line-level diffs —
+is not what this language needs. CodeMirror remains available on top of the spans if a later
+feature earns it.
+
+**Spans came from a problem the plan had written off.** `Localize.Number.Parser.scan/2` returns
+numbers already parsed, so `"02"` and `"2"` both arrive as `2` and the source text is
+unrecoverable. The tokenizer's moduledoc said as much and deferred offsets indefinitely.
+
+The text is unrecoverable; the *span* is not. The text runs between numbers come back verbatim,
+so locating the next one leaves a gap, and the gap is exactly the number consumed there. `"02"`
+ends up with a token whose value is `2` and whose span is two bytes wide — which is what an
+editor wants, and what reconstructing the text from the value would have got wrong.
+
+**Line numbers came last and are the smallest change with the clearest reason.** `@3` is the
+answer on line 3, and without a gutter the only way to find the number is to count. They number
+*every* physical line — blanks, headings, comments — because that is what `@n` counts; numbering
+only the lines with answers would look tidier and would be a lie the reader cannot catch, since
+`@3` would quietly resolve to something other than the row labelled 3. The gutter follows the
+text vertically and stays pinned horizontally, which is the one way it differs from the
+highlight layer.
+
+**Highlighting is the engine's opinion, not a second one.** A highlighter that parses
+independently drifts, and a wrong colour is indistinguishable from a right one until the answer
+disagrees. Segments come from the same tokens the sheet was evaluated from. The fidelity is to
+the tokenizer, one stage short of the whole truth: `a` in "just a thought" colours as a keyword
+because it is CLDR's abbreviation for `year`, and the parser then discards it. The colour is a
+shade keener than the reading, and it errs towards showing what the engine considered rather
+than inventing a reading it never had.
 
 Latency is the risk. Every keystroke round-trips to the server. Mitigations, in order:
 
@@ -850,18 +885,78 @@ holds.
 **Three findings.**
 
 The index must *not* be consulted for English. Unity's alias table is the English vocabulary and
-is deliberately narrower than CLDR — it omits `nights` so `3 nights` stays prose — and
-consulting CLDR for English silently undid that. Caught by the test written two milestones ago.
+is still narrower than CLDR — 95 of the index's English display names have no Unity alias,
+`kilocalories` and `arcminutes` among them — and consulting CLDR for English silently widened
+the vocabulary on every English sheet. Caught by the test written two milestones ago.
 
 Names collide within a locale: `week` and `week-person` are both "Wochen". The index is built
 simplest-identifier-first and never overwrites, so the word resolves to what someone writing it
 means.
+
+**Unity 1.1 derived plurals from the CLDR unit list, and the hand-written table of calendar
+plurals went with it.** `months`, `weeks` and `days` resolve on their own now, and the workaround
+that used to fill those gaps is deleted.
+
+It widened the English vocabulary considerably as a side effect, and that is worth stating
+plainly rather than burying: `nights`, `cups`, `points`, `bars`, `stones`, `knots`, `drops`,
+`parts`, `bits` and `items` are all units now, where before only their singulars were. `hotel *
+3 nights` is 360 nights rather than 360, and a quantity does not add into a plain subtotal.
+
+The singulars were always units — what changed is that people write plurals, so the missing
+plurals had been accidentally protecting the "unrecognised words are noise" rule. The rule is
+narrower than it was.
+
+This is recorded rather than worked around. The vocabulary is Unity's to define, and a table
+here second-guessing it is precisely what the last workaround was. If the reach turns out to be
+too wide in practice, the fix belongs upstream — an "everyday word" exclusion list in Unity, not
+a second opinion in this repo. The sample sheet was reworded off `3 nights` in the meantime.
+
+And English `in` turns out to be *three* words, not two — the conversion keyword, the unit
+`inch`, and an ordinary preposition. All three parse, so nothing before evaluation can choose
+between them, and the guesses that had accumulated were wrong in both directions: `in 3 weeks`
+answered "3 inch-weeks" and `19 + 22 in cash` answered nothing at all.
+
+Two rules settle it. A bare unit is not an expression, so the `inch` reading is unavailable
+where nothing can multiply it — which is exactly the line-leading position. And when the unit
+reading *does* parse but the units then disagree, the line is read again with the ambiguous
+words demoted to prose. `12 ft + 3 in total` keeps its inches because feet and inches agree;
+`19 + 22 in cash` gives them up because inches and a bare number do not.
+
+This is the same lesson as the five CLDR collisions above, in its sharpest form: the reading
+that type-checks is the one that was meant, and that is knowable only after the arithmetic is
+attempted. A parser guessing alone will be wrong, and its wrong answers look like answers.
 
 And the limit the plan predicted is real and now visible. `nach` is both "in" (conversion) and
 "after" (relative date); the lexicon maps one surface form to one role, so German keeps `nach`
 for "after" and uses `in` for conversion. Word *order* is the larger version — `20 is 10% of
 what` has no word-for-word German form — and that will need phrase rules per locale rather than
 vocabulary per locale.
+
+**Recurrence phrases were the last English-only corner, and are now localized too.** `jeden
+Montag`, `chaque lundi`, `cada lunes` and `毎週月曜日` all answer. The day and month names were
+never the problem — CLDR had those all along. What was hardcoded was the word marking a phrase
+as recurring, the spelled ordinals, and the word for a working day; all three now live in the
+lexicon beside the operators.
+
+The lists are longer than the operator ones because of inflection. A German ordinal agrees with
+its noun (`letzter`/`letzte`/`letzten`) and a French one with gender (`dernier`/`dernière`), and
+a lexicon that matches surface forms carries every form a person might type. That is dull and it
+is also the whole job: there is no morphological analyser here, and adding one to save thirty
+words would be a much larger thing to get wrong.
+
+Two things fell out of it worth recording. Japanese needed no special handling at the phrase
+level at all — `毎週月曜日` segments into 毎週 and 月曜日 against the locale's own vocabulary, and
+from there it is ordinary tokens. And French forced one narrow exception to "names come from
+CLDR": `tous les lundis` is the natural phrasing and CLDR holds only `lundi`, so each day name
+also answers to itself plus an `s`. That is the same trailing-`s` heuristic that went badly
+wrong on units, kept safe by scope — seven entries added to a table of seven, inside a line
+already known to be a recurrence, rather than a retry against thousands of aliases.
+
+**Still English-only: the answers.** A German sheet reads `jeden Montag` and answers `5 dates ·
+17.08.2026, …` — the dates are localized and the word "dates" is not. Fixing it means routing
+that summary through the Gettext backend (already configured with
+`Localize.Gettext.Interpolation`) as an MF2 message with a plural selector, and writing the
+catalogues. Not done here.
 
 **French, Spanish and Japanese followed, and each tested something German could not.**
 
@@ -886,22 +981,48 @@ the scripts that need them (Chinese, Japanese, Thai, Khmer, Lao, Burmese). It fi
 words rather than familiar ones. It is now a dependency, and the dictionaries are a download
 step in `mix setup` and a cache in CI.
 
-It also has a bug, and a harmful one here.
-`Unicode.String.split("Japanese", break: :word, locale: "ja")` returns eight single letters,
-while the same call under `locale: "en"` correctly returns one word — the dictionary break is
+It also had a bug, and a harmful one here.
+`Unicode.String.split("Japanese", break: :word, locale: "ja")` returned eight single letters,
+while the same call under `locale: "en"` correctly returned one word — the dictionary break was
 applied to the whole string rather than to the runs that need it. Single letters are disastrous
 in this engine because `J` is joule and `s` is second in Unity's abbreviation table, so
-`2026-06-15 → Japanese` produced a *wrong answer* rather than no answer. The tokenizer now
-partitions text by script and only hands dictionary-script runs to the splitter; the workaround
-comes out when the upstream fix lands.
+`2026-06-15 → Japanese` produced a *wrong answer* rather than no answer.
+
+**Fixed upstream in `unicode_string` 2.3.1**, and the script-partitioning workaround is deleted —
+`segment/2` calls `Unicode.String.split/2` directly and mixed-script text keeps each run's own
+boundaries without anything here knowing which script is which. The tests written against the
+workaround stay, because the failure they guard is the worst kind this program has: a plausible
+answer to a question nobody asked.
 
 M5 and M6 are the two thesis milestones; **their order is decision 3 below.** M5 is more
 demonstrable and easier to write about; M6 compounds — every locale added multiplies the
 addressable audience for everything built before it.
 
-**M7 — Product. 🔨 Persistence and export done.** Accounts, sheet persistence, sheetbooks,
-export, sharing, keyboard shortcuts, CodeMirror editor, the timeline pane from §5.5.
-Deliverable: something deployable.
+**M7 — Product. 🔨 Everything but accounts.** Persistence, Markdown export, sharing, keyboard
+shortcuts, the timeline pane and syntax highlighting are done. Outstanding: accounts, sheet
+persistence across devices, and sheetbooks. Deliverable: something deployable.
+
+**Sharing puts the whole sheet in the URL fragment.** No account, no row in a table, no record
+to rot — and a fragment is never sent in an HTTP request, so a shared sheet does not pass
+through the server's logs or a referrer header. Gzip plus URL-safe base64 gets a forty-line
+sheet into a 419-character link. The locale travels with the text, because `1.234,5` is a
+different number in `de` than in `en` and a link carrying only the characters would show the
+recipient different answers from the sender.
+
+**The timeline pane draws whatever the selected line placed in time** — recurrence sets, clock
+spans, dates, zoned instants. Three decisions worth keeping:
+
+* *The axis is snapped, not padded.* Rounding outwards to whole hours, days, months or years
+  gives clean tick labels and honest breathing room at both ends from one decision.
+
+* *Granularity follows the data, not the span.* A set of whole days is drawn against days even
+  when it is only 24 hours long. An hour axis there would invent precision the answer does not
+  have and label a date "12:00 AM".
+
+* *An axis has one clock.* The overlap of two working days begins at 9am in New York and ends at
+  5pm in London; both instants are right, and drawing each against its own clock makes a
+  three-hour overlap read as eight. Every instant is shifted into one zone before any label is
+  written, and the pane says which.
 
 **Session-only persistence, in `localStorage`.** A reload no longer loses the sheet, and no
 account is needed to start. The trade is that a sheet does not follow you between devices, which

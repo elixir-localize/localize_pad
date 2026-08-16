@@ -112,4 +112,66 @@ defmodule LocalizePad.RecurrenceTest do
       assert formatted == "Aug 13, 2027"
     end
   end
+
+  describe "recurrence phrases in every lexicon locale" do
+    defp weekdays(source, locale) do
+      source
+      |> dates(locale: locale)
+      |> Enum.map(&Date.day_of_week/1)
+      |> Enum.uniq()
+    end
+
+    test "`every Monday` is recognised in each locale's own words" do
+      # The day names come from CLDR, so the only thing authored per locale is
+      # the word that marks the phrase as recurring.
+      assert weekdays("every Monday", :en) == [1]
+      assert weekdays("jeden Montag", :de) == [1]
+      assert weekdays("chaque lundi", :fr) == [1]
+      assert weekdays("cada lunes", :es) == [1]
+      assert weekdays("毎週月曜日", :ja) == [1]
+    end
+
+    test "a plural weekday works where the language uses one" do
+      # `tous les lundis` is how a French speaker says it, and CLDR holds only
+      # `lundi`.
+      assert weekdays("tous les lundis", :fr) == [1]
+      assert weekdays("every Mondays", :en) == [1]
+    end
+
+    test "spelled ordinals are recognised in each locale, inflections included" do
+      # `letzten`, `dernière` and `última` are the same position in three
+      # languages, and each is written several ways depending on what it
+      # agrees with.
+      for {source, locale} <- [
+            {"last Friday of the month", :en},
+            {"jeden letzten Freitag", :de},
+            {"dernier vendredi du mois", :fr},
+            {"último viernes del mes", :es}
+          ] do
+        assert weekdays(source, locale) == [5], "#{source} in #{locale}"
+      end
+    end
+
+    test "an ordinal positions the occurrence, not just the day" do
+      # `第二火曜日` is the *second* Tuesday, so consecutive dates are a month
+      # apart rather than a week.
+      assert [first, second | _rest] = dates("毎月第二火曜日", locale: :ja)
+
+      assert Date.day_of_week(first) == 2
+      assert Date.diff(second, first) > 21
+    end
+
+    test "one locale's vocabulary is not another's" do
+      # The lexicons do not pool. `jeden` is not an English word and reading it
+      # as one would make an English sheet quietly accept German.
+      assert Sheet.new("jeden Montag", locale: :en).lines |> hd() |> Map.get(:value) == nil
+      assert Sheet.new("every Monday", locale: :de).lines |> hd() |> Map.get(:value) == nil
+    end
+
+    test "a regional tag reads its language's lexicon" do
+      # `de-AT` has no lexicon of its own and must not fall all the way back to
+      # English.
+      assert weekdays("jeden Montag", :"de-AT") == [1]
+    end
+  end
 end

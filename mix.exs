@@ -80,7 +80,7 @@ defmodule LocalizePad.MixProject do
       {:localize_web, "~> 1.1"},
       {:calendrical, "~> 1.2"},
       {:ex_tempo, "~> 1.2"},
-      {:unity, "~> 1.0"},
+      {:unity, "~> 1.1"},
       {:ex_money, "~> 6.2"},
 
       # Required by Calendrical.TimeZone to resolve IANA zone names.

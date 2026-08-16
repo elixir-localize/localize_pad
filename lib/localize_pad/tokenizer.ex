@@ -28,12 +28,21 @@ defmodule LocalizePad.Tokenizer do
 
   ## Source offsets
 
-  Tokens carry the text they were read from but not yet their offset into the
-  line. Offsets are needed for editor decoration (syntax highlighting,
-  hover-to-peek, click-an-answer-to-reference) and will be added with the
-  CodeMirror editor; reconstructing them from `scan/2` output is unreliable
-  because a number's source text is not recoverable from its value (`"02"` and
-  `"2"` both parse to `2`).
+  Every token records where in the line it was read from, which is what editor
+  decoration needs — highlighting, hover-to-peek, click-an-answer-to-reference
+  all start from mapping a character position back to the token covering it.
+
+  A number's source *text* is genuinely unrecoverable from `scan/2`, because
+  `"02"` and `"2"` both arrive as `2`. Its *span* is not: the text runs come
+  back verbatim, so locating the next one leaves a gap, and the gap is exactly
+  the number that was consumed there. `"02"` therefore ends up with a token
+  whose value is `2` and whose span is two bytes wide — which is what an editor
+  wants, and what reconstructing the text from the value would have got wrong.
+
+  A token built from several — `@` and `3` into a line reference — covers what
+  all of them covered. A token whose source was rewritten rather than sliced is
+  left unplaced rather than guessed at; an editor can skip what it cannot
+  locate, but it cannot un-highlight a wrong guess.
 
   """
 
@@ -105,10 +114,7 @@ defmodule LocalizePad.Tokenizer do
     tokens =
       input
       |> Scanner.scan(locale: locale)
-      |> Enum.flat_map(fn
-        {:temporal, fields, source} -> [Token.new(:temporal, fields, source)]
-        {:text, text} -> tokenize_text(text, locale)
-      end)
+      |> place_chunks(locale)
       |> join_line_references()
       |> join_ordinals()
       |> join_percentages()
@@ -120,10 +126,33 @@ defmodule LocalizePad.Tokenizer do
     {:ok, tokens}
   end
 
-  defp tokenize_text(text, locale) do
+  # The chunks concatenate to the input, so a running cursor is enough to know
+  # where each one starts.
+  defp place_chunks(chunks, locale) do
+    {tokens, _cursor} =
+      Enum.flat_map_reduce(chunks, 0, fn
+        {:temporal, fields, source}, cursor ->
+          token = :temporal |> Token.new(fields, source) |> Token.at(cursor, byte_size(source))
+
+          {[token], cursor + byte_size(source)}
+
+        {:text, text}, cursor ->
+          {tokenize_text(text, locale, cursor), cursor + byte_size(text)}
+      end)
+
+    tokens
+  end
+
+  defp tokenize_text(text, locale, offset) do
     case Localize.Number.Parser.scan(text, locale: locale) do
       elements when is_list(elements) ->
-        Enum.flat_map(elements, &tokenize_element(&1, locale))
+        elements
+        |> element_spans(text)
+        |> Enum.flat_map(fn {element, start, length} ->
+          element
+          |> tokenize_element(locale)
+          |> place_in(binary_part(text, start, length), offset + start, not is_binary(element))
+        end)
 
       # `scan/2` returns an error tuple for an unknown locale or oversized
       # input. Neither should take a sheet down, so the line simply produces
@@ -131,6 +160,70 @@ defmodule LocalizePad.Tokenizer do
       {:error, _exception} ->
         []
     end
+  end
+
+  # `scan/2` hands back numbers already parsed, which loses their text — `"02"`
+  # and `"2"` both arrive as `2`. The *spans* survive, though: the text runs
+  # come back verbatim, so locating the next one leaves a gap, and the gap is
+  # exactly the number that was consumed there.
+  defp element_spans(elements, text, cursor \\ 0)
+
+  defp element_spans([], _text, _cursor), do: []
+
+  defp element_spans([element | rest], text, cursor) when is_binary(element) do
+    length = byte_size(element)
+
+    [{element, cursor, length} | element_spans(rest, text, cursor + length)]
+  end
+
+  defp element_spans([number | rest], text, cursor) do
+    length = number_length(rest, text, cursor)
+
+    [{number, cursor, length} | element_spans(rest, text, cursor + length)]
+  end
+
+  # A number runs up to whatever text follows it, or to the end of the run when
+  # nothing does. `scan/2` never returns two numbers in a row — it would have
+  # read them as one — so the element after a number is text or nothing.
+  defp number_length([following | _rest], text, cursor) when is_binary(following) do
+    remaining = byte_size(text) - cursor
+
+    case :binary.match(text, following, scope: {cursor, remaining}) do
+      {start, _length} -> start - cursor
+      :nomatch -> remaining
+    end
+  end
+
+  defp number_length(_rest, text, cursor), do: byte_size(text) - cursor
+
+  # Every token a text run produces carries a verbatim slice of it, and they
+  # come out in order, so locating each in turn from a running cursor places
+  # them all. A number produces one token, which covers the whole span
+  # including any leading zero its value no longer records.
+  defp place_in(tokens, source, offset, number?)
+
+  defp place_in([token], source, offset, true) do
+    [Token.at(token, offset, byte_size(source))]
+  end
+
+  defp place_in(tokens, source, offset, _number?) do
+    {placed, _cursor} =
+      Enum.map_reduce(tokens, 0, fn token, cursor ->
+        remaining = byte_size(source) - cursor
+
+        case :binary.match(source, token.source, scope: {cursor, remaining}) do
+          {start, length} ->
+            {Token.at(token, offset + start, length), start + length}
+
+          # A token whose source was rewritten rather than sliced — the `->`
+          # spelling of `to`, say. Leaving it unplaced is right: an editor can
+          # skip what it cannot locate, but it cannot un-highlight a guess.
+          :nomatch ->
+            {token, cursor}
+        end
+      end)
+
+    placed
   end
 
   # A line reference is written `@3` — "the answer on line 3". The number
@@ -148,7 +241,9 @@ defmodule LocalizePad.Tokenizer do
         [at, number | join_line_references(rest)]
 
       _otherwise ->
-        [Token.new(:line_ref, line, "@#{line}") | join_line_references(rest)]
+        reference = Token.covering(Token.new(:line_ref, line, "@#{line}"), [at, number])
+
+        [reference | join_line_references(rest)]
     end
   end
 
@@ -169,7 +264,9 @@ defmodule LocalizePad.Tokenizer do
        ])
        when is_integer(value) do
     if String.downcase(suffix) in @ordinal_suffixes do
-      [Token.new(:ordinal, value, "#{value}#{suffix}") | join_ordinals(rest)]
+      ordinal = Token.covering(Token.new(:ordinal, value, "#{value}#{suffix}"), [number, word])
+
+      [ordinal | join_ordinals(rest)]
     else
       [number | join_ordinals([word | rest])]
     end
@@ -181,11 +278,13 @@ defmodule LocalizePad.Tokenizer do
   defp join_percentages([]), do: []
 
   defp join_percentages([
-         %Token{kind: :number, value: value},
-         %Token{kind: :operator, value: :percent} | rest
+         %Token{kind: :number, value: value} = number,
+         %Token{kind: :operator, value: :percent} = sign | rest
        ])
        when is_number(value) do
-    [Token.new(:percentage, value, "#{value}%") | join_percentages(rest)]
+    percentage = Token.covering(Token.new(:percentage, value, "#{value}%"), [number, sign])
+
+    [percentage | join_percentages(rest)]
   end
 
   # `percent` is itself a CLDR unit, so it reaches here classified as `:unit`
@@ -196,7 +295,9 @@ defmodule LocalizePad.Tokenizer do
        ])
        when is_number(value) and kind in [:word, :unit] do
     if String.downcase(word) in ~w(percent percentage) do
-      [Token.new(:percentage, value, "#{value} #{word}") | join_percentages(rest)]
+      spelled = Token.new(:percentage, value, "#{value} #{word}")
+
+      [Token.covering(spelled, [number, follower]) | join_percentages(rest)]
     else
       # Put both tokens back exactly as they were. Rebuilding the follower from
       # its source would lose a unit token's resolved value — `kg` would go
@@ -213,30 +314,40 @@ defmodule LocalizePad.Tokenizer do
   defp join_money([], _locale), do: []
 
   defp join_money(
-         [%Token{kind: :word, source: marker}, %Token{kind: :number, value: amount} | rest],
+         [
+           %Token{kind: :word, source: marker} = symbol,
+           %Token{kind: :number, value: amount} = number | rest
+         ],
          locale
        )
        when is_number(amount) do
     case Currency.resolve(marker, locale) do
       {:ok, code} ->
-        [money_token(code, amount, "#{marker}#{amount}") | join_money(rest, locale)]
+        money = money_token(code, amount, "#{marker}#{amount}")
+
+        [Token.covering(money, [symbol, number]) | join_money(rest, locale)]
 
       :error ->
-        [Token.new(:word, marker, marker) | join_money([number_token(amount) | rest], locale)]
+        [symbol | join_money([number | rest], locale)]
     end
   end
 
   defp join_money(
-         [%Token{kind: :number, value: amount}, %Token{kind: :word, source: marker} | rest],
+         [
+           %Token{kind: :number, value: amount} = number,
+           %Token{kind: :word, source: marker} = code_word | rest
+         ],
          locale
        )
        when is_number(amount) do
     case Currency.resolve(marker, locale) do
       {:ok, code} ->
-        [money_token(code, amount, "#{amount} #{marker}") | join_money(rest, locale)]
+        money = money_token(code, amount, "#{amount} #{marker}")
+
+        [Token.covering(money, [number, code_word]) | join_money(rest, locale)]
 
       :error ->
-        [number_token(amount) | join_money([Token.new(:word, marker, marker) | rest], locale)]
+        [number | join_money([code_word | rest], locale)]
     end
   end
 
@@ -245,8 +356,6 @@ defmodule LocalizePad.Tokenizer do
   defp money_token(code, amount, source) do
     Token.new(:money, Money.new(code, to_decimal(amount)), source)
   end
-
-  defp number_token(amount), do: Token.new(:number, amount, to_string(amount))
 
   # Money is decimal all the way down; going through the float would give
   # 19.999999999999996 for amounts a person typed exactly.
@@ -260,7 +369,7 @@ defmodule LocalizePad.Tokenizer do
     Enum.map(tokens, fn
       %Token{kind: :word, source: word} = token ->
         case Currency.resolve(word, locale) do
-          {:ok, code} -> Token.new(:currency, code, word)
+          {:ok, code} -> Token.covering(Token.new(:currency, code, word), [token])
           :error -> token
         end
 
@@ -275,7 +384,7 @@ defmodule LocalizePad.Tokenizer do
     Enum.map(tokens, fn
       %Token{kind: :word, source: word} = token ->
         case Calendars.resolve(word) do
-          {:ok, calendar} -> Token.new(:calendar, calendar, word)
+          {:ok, calendar} -> Token.covering(Token.new(:calendar, calendar, word), [token])
           :error -> token
         end
 
@@ -294,7 +403,9 @@ defmodule LocalizePad.Tokenizer do
   defp join_zones([%Token{kind: :word} | _rest] = tokens) do
     case longest_zone(tokens) do
       {:ok, zone, source, consumed} ->
-        [Token.new(:zone, zone, source) | tokens |> Enum.drop(consumed) |> join_zones()]
+        token = Token.covering(Token.new(:zone, zone, source), Enum.take(tokens, consumed))
+
+        [token | tokens |> Enum.drop(consumed) |> join_zones()]
 
       :error ->
         [hd(tokens) | tokens |> tl() |> join_zones()]
@@ -369,36 +480,11 @@ defmodule LocalizePad.Tokenizer do
   # `Unicode.String.split/2` is the real thing — UAX #29 word breaking, with
   # ICU's dictionaries for the scripts that need them. It finds *actual* words
   # rather than familiar ones, so an unrecognised Japanese word becomes one
-  # noise token instead of a handful of accidental units.
-  # Only the runs actually written in a dictionary script are handed to the
-  # dictionary splitter. Everything else — Latin words, digits, symbols — keeps
-  # its own boundaries.
-  #
-  # This is a guard against an upstream bug rather than an optimisation.
-  # `Unicode.String.split("Japanese", break: :word, locale: "ja")` returns
-  # `["J", "a", "p", "a", "n", "e", "s", "e"]`, while the same call under
-  # `locale: "en"` correctly returns `["Japanese"]` — the dictionary break is
-  # applied to the whole string instead of to the runs that need it. Single
-  # letters are disastrous here, because `J` is joule in Unity's abbreviation
-  # table and `s` is second.
-  @dictionary_script ~r/[\p{Han}\p{Hiragana}\p{Katakana}\p{Thai}\p{Khmer}\p{Lao}\p{Myanmar}]+/u
-
+  # noise token instead of a handful of accidental units, and mixed-script text
+  # keeps each run's own boundaries without anything here knowing which script
+  # is which.
   defp segment(text, locale) do
-    @dictionary_script
-    |> Regex.split(text, include_captures: true, trim: true)
-    |> Enum.flat_map(&segment_run(&1, locale))
-  end
-
-  defp segment_run(run, locale) do
-    if Regex.match?(@dictionary_script, run) do
-      dictionary_split(run, locale)
-    else
-      String.split(run, ~r/\s+/u, trim: true)
-    end
-  end
-
-  defp dictionary_split(run, locale) do
-    case Unicode.String.split(run, break: :word, locale: language(locale), trim: true) do
+    case Unicode.String.split(text, break: :word, locale: language(locale), trim: true) do
       pieces when is_list(pieces) ->
         pieces
 
@@ -407,7 +493,7 @@ defmodule LocalizePad.Tokenizer do
       # error here. Falling back to the whole run keeps the line readable as
       # prose rather than failing it.
       _unavailable ->
-        [run]
+        [text]
     end
   end
 
@@ -452,31 +538,9 @@ defmodule LocalizePad.Tokenizer do
     end
   end
 
-  # Calendar units whose plural may be missing from Unity's alias table.
-  # `month` resolves and `months` does not, while `week`/`weeks`,
-  # `year`/`years` and `day`/`days` all do.
-  @calendar_plurals %{
-    "years" => "year",
-    "months" => "month",
-    "weeks" => "week",
-    "days" => "day",
-    "hours" => "hour",
-    "minutes" => "minute",
-    "seconds" => "second"
-  }
-
-  # Fills the gaps above, and *only* those.
-  #
-  # The first attempt at this stripped a trailing `s` from any unresolved word
-  # and retried. That fixed `months` and broke more than it fixed: CLDR has a
-  # `night` unit, so `hotel * 3 nights` stopped being 360 and became "360
-  # nights", which then dropped out of the subtotal because a quantity will not
-  # add to a number. In a language whose defining rule is that unrecognised
-  # words are noise, quietly promoting English plurals to units has far too
-  # wide a blast radius to take on trust.
-  #
-  # The missing plurals are worth fixing upstream in Unity; this table is what
-  # keeps calendar arithmetic working until they are.
+  # Unity 1.1 derives plurals from the CLDR unit list, so `months`, `weeks` and
+  # the rest resolve on their own. The table of hand-listed calendar plurals
+  # that used to sit here is gone with them.
   defp resolve_unit(word, locale) do
     downcased = String.downcase(word)
 
@@ -484,7 +548,6 @@ defmodule LocalizePad.Tokenizer do
          # Unity's table is case-sensitive, and German capitalises its nouns —
          # "Kilometer" is the identifier `kilometer` but for one letter.
          {:error, _reason} <- Unity.Aliases.resolve(downcased),
-         {:error, _reason} <- calendar_plural(downcased),
          :error <- localized_unit(word, locale) do
       {:error, :unknown_unit}
     else
@@ -499,13 +562,6 @@ defmodule LocalizePad.Tokenizer do
   # that on every English sheet.
   defp localized_unit(word, locale) do
     if language(locale) == "en", do: :error, else: Units.resolve(word, locale)
-  end
-
-  defp calendar_plural(word) do
-    case Map.fetch(@calendar_plurals, word) do
-      {:ok, singular} -> Unity.Aliases.resolve(singular)
-      :error -> {:error, :unknown_unit}
-    end
   end
 
   defp language(locale) do

@@ -79,12 +79,28 @@ defmodule LocalizePad.LocalesTest do
     end
 
     test "Latin text inside a Japanese sheet keeps its own boundaries" do
-      # `Unicode.String.split/2` under a dictionary locale shatters Latin runs
-      # into single characters, and single letters resolve as unit
+      # `Unicode.String.split/2` under a dictionary locale used to shatter
+      # Latin runs into single characters, and single letters resolve as unit
       # abbreviations — `J` is joule, `s` is second. So "Japanese" became
       # joule-second and the line produced a *wrong answer* rather than none.
-      # The tokenizer now partitions by script before segmenting.
+      #
+      # Fixed upstream in unicode_string 2.3.1; the script-partitioning
+      # workaround this test was written against is gone. The test stays,
+      # because the failure it guards is the worst kind this program has —
+      # a plausible answer to a question nobody asked.
       assert answer("2026-06-15 → Japanese", :ja) == "令和8年6月15日"
+      assert answer("19 + 22 for breakfast", :ja) == "41"
+    end
+
+    test "mixed script in one line splits on each run's own rules" do
+      # Thai has no word spaces either, and a Thai line still has to read Latin
+      # unit abbreviations beside Thai prose. Asserted on the tokens rather
+      # than the answer, because Thai is not one of this app's configured
+      # output locales and the formatting would fall back to English.
+      {:ok, tokens} = LocalizePad.Tokenizer.tokenize("สวัสดี 100 km", locale: :th)
+
+      assert Enum.map(tokens, & &1.source) == ["สวัสดี", "100", "km"]
+      assert Enum.map(tokens, & &1.kind) == [:word, :number, :unit]
     end
 
     test "ordinary arithmetic is unaffected" do

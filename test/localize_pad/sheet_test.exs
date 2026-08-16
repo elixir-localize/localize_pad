@@ -280,6 +280,49 @@ defmodule LocalizePad.SheetTest do
     end
   end
 
+  describe "the three readings of `in`" do
+    # `in` is the conversion keyword, the unit `inch`, and an ordinary English
+    # preposition. Nothing before evaluation can tell them apart, because all
+    # three parse — so a wrong guess is retried once the units disagree.
+    test "an operand after it makes it the conversion keyword" do
+      assert answers("100 km in miles") == ["62.137119 miles"]
+    end
+
+    test "nothing after it makes it the unit" do
+      assert answers("12 ft + 3 in") == ["12.25 feet"]
+      assert answers("3 in") == ["3 inches"]
+    end
+
+    test "prose after it still makes it the unit when the units agree" do
+      assert answers("12 ft + 3 in total") == ["12.25 feet"]
+    end
+
+    test "prose after it makes it prose when the units do not agree" do
+      # The tempting answer here is 22 inches, which is worse than refusing:
+      # a sentence about money would silently acquire a length.
+      assert answers("19 + 22 in cash") == ["41"]
+      assert answers("$19 for breakfast + $22 in tips") == ["$41.00"]
+    end
+
+    test "it is never the unit in a position where no number precedes it" do
+      # `in 3 weeks` once answered "3 inch-weeks" — a wrong answer, not a
+      # refusal, and the reader had to know the answer already to catch it.
+      sheet = Sheet.new("in 3 weeks", locale: :en)
+
+      assert [line] = sheet.lines
+      assert line.formatted == nil
+      assert line.error == {:unexpected, "in"}
+    end
+
+    test "a genuine unit mismatch is still reported rather than retried away" do
+      sheet = Sheet.new("3 m + 4 kg", locale: :en)
+
+      assert [line] = sheet.lines
+      assert line.formatted == nil
+      assert line.error != nil
+    end
+  end
+
   describe "robustness" do
     test "an empty sheet does not crash" do
       assert Sheet.new("", locale: :en).lines |> Enum.map(& &1.kind) == [:blank]

@@ -18,11 +18,27 @@ defmodule LocalizePad.Temporal.Recurrence do
 
   ## Weekday and month names come from CLDR
 
-  The names are read from `Localize.Calendar`, so the phrase vocabulary is
-  already localized: `jeden Freitag` needs only the operator words, not a
-  second list of weekday names. The ordinals (`first`, `4th`, `last`) are the
-  part that still needs authoring per locale, and they live with the rest of
-  the operator lexicon.
+  The names are read from `Localize.Calendar`, so `every Monday`, `jeden
+  Montag`, `chaque lundi`, `cada lunes` and `毎週月曜日` all find their day the
+  same way, with no list of day names written here.
+
+  Three things CLDR has no table for are authored per locale in
+  `LocalizePad.Lexicon`: the word marking a phrase as recurring, the spelled
+  ordinals that position an occurrence, and the word for a working day.
+
+  One narrow exception is made to the CLDR names. `tous les lundis` is how a
+  French speaker says "every Monday" and CLDR holds only `lundi`, so each name
+  also answers to itself plus an `s`. That is the trailing-`s` heuristic that
+  went badly wrong when it was tried on units, and the difference is scope:
+  there it retried every unresolved word against thousands of aliases, here it
+  adds seven entries to a table of seven inside a line already known to be a
+  recurrence.
+
+  ## Japanese needs no spaces
+
+  `毎週月曜日` is one run of characters that the tokenizer segments into 毎週
+  and 月曜日 using the locale's own vocabulary, at which point the marker and
+  the day name are ordinary tokens and everything above applies unchanged.
 
   ## Answers are sets
 
@@ -31,27 +47,13 @@ defmodule LocalizePad.Temporal.Recurrence do
 
   """
 
-  alias LocalizePad.Token
+  alias LocalizePad.{Lexicon, Token}
 
   # Enough occurrences to answer "when is the next one" and see the pattern,
   # few enough to render in a margin. A stated year bounds it instead.
   @default_count 5
 
   @weekday_codes %{1 => "MO", 2 => "TU", 3 => "WE", 4 => "TH", 5 => "FR", 6 => "SA", 7 => "SU"}
-
-  @ordinals %{
-    "first" => 1,
-    "1st" => 1,
-    "second" => 2,
-    "2nd" => 2,
-    "third" => 3,
-    "3rd" => 3,
-    "fourth" => 4,
-    "4th" => 4,
-    "fifth" => 5,
-    "5th" => 5,
-    "last" => -1
-  }
 
   @doc """
   Recognises a recurrence phrase.
@@ -89,7 +91,7 @@ defmodule LocalizePad.Temporal.Recurrence do
     locale = Keyword.get_lazy(options, :locale, &Localize.get_locale/0)
     words = Enum.map(tokens, &String.downcase(&1.source))
 
-    if recurring?(words, tokens) do
+    if recurring?(words, tokens, lexicon_locale(locale)) do
       build(words, tokens, locale, options)
     else
       :error
@@ -97,13 +99,12 @@ defmodule LocalizePad.Temporal.Recurrence do
   end
 
   # `every` marks a recurrence outright; an ordinal-plus-weekday phrase is one
-  # even without it, as in `4th Thursday of November`.
-  defp recurring?(words) do
-    "every" in words or "each" in words or Enum.any?(words, &Map.has_key?(@ordinals, &1))
-  end
-
-  defp recurring?(words, tokens) do
-    recurring?(words) or Enum.any?(tokens, &(&1.kind == :ordinal))
+  # even without it, as in `4th Thursday of November`. Both words come from the
+  # locale's lexicon, so `jeden Montag` is recognised the same way.
+  defp recurring?(words, tokens, locale) do
+    Enum.any?(words, &Lexicon.every?(&1, locale)) or
+      Enum.any?(words, &match?({:ok, _position}, Lexicon.ordinal(&1, locale))) or
+      Enum.any?(tokens, &(&1.kind == :ordinal))
   end
 
   defp build(words, tokens, locale, options) do
@@ -113,7 +114,7 @@ defmodule LocalizePad.Temporal.Recurrence do
   end
 
   defp rule(words, tokens, locale) do
-    {ordinal, ordinal_position} = find_ordinal(words, tokens)
+    {ordinal, ordinal_position} = find_ordinal(words, tokens, lexicon_locale(locale))
     weekday_position = position_of_weekday(words, locale)
 
     compose(%{
@@ -124,7 +125,7 @@ defmodule LocalizePad.Temporal.Recurrence do
       # to where it sits. `4th Thursday` puts it before the weekday and means
       # the fourth one; `Friday the 13th` puts it after and means the 13th day.
       trailing?: !!(ordinal && weekday_position && ordinal_position > weekday_position),
-      weekdays?: weekday?(words)
+      weekdays?: weekday?(words, lexicon_locale(locale))
     })
   end
 
@@ -159,12 +160,12 @@ defmodule LocalizePad.Temporal.Recurrence do
 
   # An ordinal may be spelled (`fourth`) or written (`4th`), and its position
   # in the line decides what it means.
-  defp find_ordinal(words, tokens) do
+  defp find_ordinal(words, tokens, locale) do
     spelled =
       words
       |> Enum.with_index()
       |> Enum.find_value(fn {word, index} ->
-        case Map.fetch(@ordinals, word) do
+        case Lexicon.ordinal(word, locale) do
           {:ok, value} -> {value, index}
           :error -> nil
         end
@@ -190,7 +191,18 @@ defmodule LocalizePad.Temporal.Recurrence do
     end)
   end
 
-  defp weekday?(words), do: "weekday" in words or "weekdays" in words
+  defp weekday?(words, locale), do: Enum.any?(words, &Lexicon.weekday?(&1, locale))
+
+  # The lexicon is keyed by language, so a regional tag reads its parent's
+  # vocabulary rather than falling all the way back to English.
+  defp lexicon_locale(locale) do
+    case Localize.validate_locale(locale) do
+      {:ok, tag} -> String.to_existing_atom(to_string(tag.language))
+      {:error, _reason} -> :en
+    end
+  rescue
+    ArgumentError -> :en
+  end
 
   # A stated year bounds the rule to that year; otherwise take a handful.
   defp bound(rule, _words, tokens) do
@@ -272,10 +284,28 @@ defmodule LocalizePad.Temporal.Recurrence do
         |> Map.values()
         |> Enum.flat_map(&Enum.map(&1, fn {index, name} -> {String.downcase(name), index} end))
         |> Map.new()
+        |> with_plurals()
 
       _other ->
         %{}
     end
+  end
+
+  # `tous les lundis` is how a French speaker says "every Monday", and CLDR
+  # holds only `lundi`. Adding `name <> "s"` covers French and English and is
+  # inert elsewhere — Spanish weekdays already end in `s` and German ones take
+  # the same form adverbially.
+  #
+  # This is the trailing-`s` heuristic that went badly wrong when it was
+  # applied to units, and the difference is the scope. There it retried every
+  # unresolved word against a table of thousands, and turned `nights` into a
+  # quantity. Here it adds seven entries to a table of seven, inside a line
+  # already known to be a recurrence, and `Map.put_new` means a name that is
+  # genuinely another day's plural keeps its own meaning.
+  defp with_plurals(names) do
+    Enum.reduce(names, names, fn {name, index}, acc ->
+      Map.put_new(acc, name <> "s", index)
+    end)
   end
 
   @doc """

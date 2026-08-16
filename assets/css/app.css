@@ -117,7 +117,21 @@
  */
 :root {
   --sheet-font: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
-  --sheet-line-height: 1.75rem;
+  /* This value sets the caret's height in Safari, and does not in Chrome.
+     Measured, because the two disagree and it is not guessable: Safari draws a
+     textarea's caret at the full line box, so the caret is this tall and the
+     leading shows as empty caret above and below the glyphs. Chrome draws it
+     from the font's ascent-to-descent box — 17.5px here at a line height of
+     24px, 28px or 60px alike.
+
+     No CSS shortens a native caret, so in Safari this ratio *is* how long the
+     cursor looks. At 1.87 it stood 10px taller than the glyphs and read as a
+     cursor borrowed from another font.
+
+     1.375rem leaves 4px of that overhang, which is as tight as the rows can
+     go while still reading as separate lines. Every column derives from this
+     one value, so changing it cannot put them out of step. */
+  --sheet-line-height: 1.375rem;
   --sheet-font-size: 0.9375rem;
 }
 
@@ -136,4 +150,116 @@
 
 .sheet-answers > div {
   height: var(--sheet-line-height);
+}
+
+/* The editor is a transparent textarea laid over a coloured copy of its own
+   text. Both boxes must agree byte for byte on metrics — font, size, line
+   height, padding, wrapping — or the colours drift out from under the cursor.
+   Anything changed on one has to be changed on the other. */
+.sheet-editor {
+  display: flex;
+  min-height: 0;
+}
+
+/* The layer stack is its own box so the gutter sits beside it rather than
+   underneath the absolutely-positioned highlight. */
+.sheet-layers {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.sheet-gutter,
+.sheet-highlight,
+.sheet-input {
+  margin: 0;
+  padding: 1rem 0;
+  border: 0;
+  overflow: auto;
+  tab-size: 2;
+  white-space: pre;
+  font-family: var(--sheet-font);
+  font-size: var(--sheet-font-size);
+  line-height: var(--sheet-line-height);
+}
+
+/* Line numbers count *every* line, blanks and headings included, because that
+   is what `@n` counts. Numbering only the lines that carry an answer would
+   read better and be a lie. */
+.sheet-gutter {
+  flex: none;
+  padding-left: 1rem;
+  padding-right: 0.75rem;
+  text-align: right;
+  overflow: hidden;
+  user-select: none;
+  opacity: 0.3;
+  border-right: 1px solid var(--color-base-300);
+  /* Wide enough for three digits without reflowing as the sheet grows; a
+     notepad that reaches four is past the point where counting was the
+     problem. */
+  min-width: 3.5rem;
+}
+
+.sheet-highlight,
+.sheet-input {
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+.sheet-highlight {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.sheet-input {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  /* The text itself is drawn by the layer beneath; only the caret and the
+     selection come from the textarea. Keeping the text transparent rather
+     than hidden preserves selection highlighting and screen-reader access. */
+  color: transparent;
+  caret-color: var(--color-base-content);
+}
+
+.tok-number,
+.tok-ordinal,
+.tok-percentage,
+.tok-money {
+  color: var(--color-primary);
+}
+
+.tok-unit,
+.tok-currency,
+.tok-calendar,
+.tok-tax {
+  color: var(--color-secondary);
+}
+
+.tok-keyword,
+.tok-operator {
+  color: var(--color-accent);
+}
+
+.tok-temporal,
+.tok-zone {
+  color: var(--color-info);
+}
+
+.tok-line_ref,
+.tok-variable {
+  color: var(--color-warning);
+}
+
+.tok-heading {
+  font-weight: 600;
+}
+
+.tok-comment,
+.tok-label {
+  opacity: 0.55;
 }

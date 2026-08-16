@@ -119,6 +119,119 @@ defmodule LocalizePad.Lexicon do
     }
   }
 
+  # Recurrence vocabulary. Weekday and month names are *not* here — CLDR
+  # supplies those, so `every Monday` and `jeden Montag` find their day the
+  # same way. What is left is the three things CLDR has no table for: the word
+  # that marks a phrase as recurring, the spelled ordinals that position an
+  # occurrence within its period, and the word for a working day.
+  #
+  # Inflection is the reason these lists are longer than the operator ones. A
+  # German ordinal agrees with its noun and a French one with its gender, and
+  # a lexicon that matches surface forms has to carry every form a person might
+  # type. Listing them is dull and it is also the whole job — there is no
+  # morphological analyser here, and adding one to save thirty words would be a
+  # far larger thing to get wrong.
+  @recurrence %{
+    en: %{
+      every: ["every", "each"],
+      weekday: ["weekday", "weekdays"],
+      ordinals: %{
+        "first" => 1,
+        "second" => 2,
+        "third" => 3,
+        "fourth" => 4,
+        "fifth" => 5,
+        "last" => -1
+      }
+    },
+    de: %{
+      # `jeden Montag`, `alle zwei Wochen`.
+      every: ["jeden", "jede", "jedes", "alle"],
+      weekday: ["wochentag", "wochentage", "werktag", "werktage"],
+      # Strong and weak endings both, because both are written.
+      ordinals: %{
+        "erster" => 1,
+        "erste" => 1,
+        "ersten" => 1,
+        "zweiter" => 2,
+        "zweite" => 2,
+        "zweiten" => 2,
+        "dritter" => 3,
+        "dritte" => 3,
+        "dritten" => 3,
+        "vierter" => 4,
+        "vierte" => 4,
+        "vierten" => 4,
+        "fünfter" => 5,
+        "fünfte" => 5,
+        "fünften" => 5,
+        "letzter" => -1,
+        "letzte" => -1,
+        "letzten" => -1
+      }
+    },
+    fr: %{
+      # `chaque lundi`, `tous les lundis`. `les` is noise and stays noise.
+      every: ["chaque", "tous", "toutes"],
+      # `jour ouvrable` is two words and the marker only needs one of them.
+      weekday: ["ouvrable", "ouvrables"],
+      ordinals: %{
+        "premier" => 1,
+        "première" => 1,
+        "deuxième" => 2,
+        "second" => 2,
+        "seconde" => 2,
+        "troisième" => 3,
+        "quatrième" => 4,
+        "cinquième" => 5,
+        "dernier" => -1,
+        "dernière" => -1
+      }
+    },
+    es: %{
+      # `cada lunes`, `todos los martes`.
+      every: ["cada", "todos", "todas"],
+      weekday: ["laborable", "laborables"],
+      ordinals: %{
+        "primer" => 1,
+        "primero" => 1,
+        "primera" => 1,
+        "segundo" => 2,
+        "segunda" => 2,
+        "tercer" => 3,
+        "tercero" => 3,
+        "tercera" => 3,
+        "cuarto" => 4,
+        "cuarta" => 4,
+        "quinto" => 5,
+        "quinta" => 5,
+        "último" => -1,
+        "última" => -1
+      }
+    },
+    ja: %{
+      # `毎週月曜日` — "every week, Monday". The prefix is written joined to
+      # what it repeats, so the segmenter has to split it off before any of
+      # this matches; see the note in `LocalizePad.Temporal.Recurrence`.
+      every: ["毎週", "毎月", "毎年", "毎日", "毎"],
+      weekday: ["平日"],
+      ordinals: %{
+        "第一" => 1,
+        "第1" => 1,
+        "第二" => 2,
+        "第2" => 2,
+        "第三" => 3,
+        "第3" => 3,
+        "第四" => 4,
+        "第4" => 4,
+        "第五" => 5,
+        "第5" => 5,
+        "最後" => -1,
+        "最終" => -1
+      }
+    }
+  }
+
   # Words naming a moment relative to the present. Kept separate from the role
   # table because these are *operands* rather than operators — `today` is a
   # date, not something that acts on one.
@@ -287,6 +400,128 @@ defmodule LocalizePad.Lexicon do
   @spec deictics(atom()) :: %{deictic() => [String.t()]}
   def deictics(locale \\ :en) do
     Map.get(@deictics, locale, @deictics.en)
+  end
+
+  @doc """
+  Returns whether a word marks a phrase as recurring.
+
+  ### Arguments
+
+  * `word` - the surface form to test, already downcased.
+
+  * `locale` - a locale identifier. Locales without an authored table fall
+    back to `:en`.
+
+  ### Returns
+
+  * `true` or `false`.
+
+  ### Examples
+
+      iex> LocalizePad.Lexicon.every?("every", :en)
+      true
+
+      iex> LocalizePad.Lexicon.every?("jeden", :de)
+      true
+
+      iex> LocalizePad.Lexicon.every?("jeden", :en)
+      false
+
+  """
+  @spec every?(String.t(), atom()) :: boolean()
+  def every?(word, locale \\ :en) when is_binary(word) do
+    word in recurrence(locale).every
+  end
+
+  @doc """
+  Returns whether a word names a working day.
+
+  ### Arguments
+
+  * `word` - the surface form to test, already downcased.
+
+  * `locale` - a locale identifier. Locales without an authored table fall
+    back to `:en`.
+
+  ### Returns
+
+  * `true` or `false`.
+
+  ### Examples
+
+      iex> LocalizePad.Lexicon.weekday?("weekdays", :en)
+      true
+
+      iex> LocalizePad.Lexicon.weekday?("werktage", :de)
+      true
+
+  """
+  @spec weekday?(String.t(), atom()) :: boolean()
+  def weekday?(word, locale \\ :en) when is_binary(word) do
+    word in recurrence(locale).weekday
+  end
+
+  @doc """
+  Returns the position a spelled ordinal names, if any.
+
+  Written ordinals — `4th`, `4.`, `4e` — are not here. Those reach the parser
+  as `:ordinal` tokens, having been assembled from a number and its suffix by
+  the tokenizer.
+
+  ### Arguments
+
+  * `word` - the surface form to look up, already downcased.
+
+  * `locale` - a locale identifier. Locales without an authored table fall
+    back to `:en`.
+
+  ### Returns
+
+  * `{:ok, position}`, where `-1` means the last. `:error` otherwise.
+
+  ### Examples
+
+      iex> LocalizePad.Lexicon.ordinal("fourth", :en)
+      {:ok, 4}
+
+      iex> LocalizePad.Lexicon.ordinal("letzten", :de)
+      {:ok, -1}
+
+      iex> LocalizePad.Lexicon.ordinal("dernière", :fr)
+      {:ok, -1}
+
+      iex> LocalizePad.Lexicon.ordinal("Tuesday", :en)
+      :error
+
+  """
+  @spec ordinal(String.t(), atom()) :: {:ok, integer()} | :error
+  def ordinal(word, locale \\ :en) when is_binary(word) do
+    Map.fetch(recurrence(locale).ordinals, word)
+  end
+
+  @doc """
+  Returns the recurrence table for a locale.
+
+  Used by the tokenizer to build a segmentation vocabulary for scripts written
+  without word spaces.
+
+  ### Arguments
+
+  * `locale` - a locale identifier.
+
+  ### Returns
+
+  * A map with `:every`, `:weekday` and `:ordinals` keys.
+
+  ### Examples
+
+      iex> LocalizePad.Lexicon.recurrence(:en).every
+      ["every", "each"]
+
+  """
+  @spec recurrence(atom()) :: %{every: [String.t()], weekday: [String.t()], ordinals: map()}
+  def recurrence(locale \\ :en) do
+    Map.get(@recurrence, locale, @recurrence.en)
   end
 
   @doc """

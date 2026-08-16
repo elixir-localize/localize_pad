@@ -58,10 +58,14 @@ defmodule LocalizePad.GermanTest do
     end
 
     test "the index is not consulted for English" do
-      # Unity's alias table *is* the English vocabulary, and it is deliberately
-      # narrower than CLDR — it omits `nights` so that `3 nights` stays prose.
-      # Consulting the CLDR index for English would undo that.
-      assert en("120 * 3 nights") == "360"
+      # Unity's alias table *is* the English vocabulary, and it is still
+      # narrower than CLDR — 95 of the index's English display names have no
+      # Unity alias, `kilocalories` and `arcminutes` among them. Consulting the
+      # index for English would quietly widen the vocabulary on every English
+      # sheet, which is the opposite of what a language built on "unrecognised
+      # words are noise" wants.
+      assert Units.resolve("kilocalories", :en) == {:ok, "kilocalorie"}
+      assert en("120 * 3 kilocalories") == "360"
     end
   end
 

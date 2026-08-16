@@ -92,8 +92,10 @@ defmodule LocalizePadWeb.SheetLiveTest do
       opened = render_click(live, :select, %{"line" => "0"})
       closed = render_click(live, :select, %{"line" => "0"})
 
-      assert opened =~ "2 + 2"
-      refute closed =~ "number"
+      # The kind label only appears in the panel; `tok-number` classes from the
+      # highlighter are on the page either way, so match the panel's own markup.
+      assert opened =~ ~s(<span class="shrink-0 opacity-40">number</span>)
+      refute closed =~ ~s(<span class="shrink-0 opacity-40">number</span>)
     end
 
     test "a line with no answer cannot be selected" do
@@ -103,6 +105,145 @@ defmodule LocalizePadWeb.SheetLiveTest do
       html = render_click(live, :select, %{"line" => "0"})
 
       refute html =~ "heading</code>"
+    end
+  end
+
+  describe "the line-number gutter" do
+    defp gutter(html) do
+      html
+      |> String.split(~r{<pre id="gutter".*?>}, parts: 2)
+      |> List.last()
+      |> String.split("</pre>", parts: 2)
+      |> List.first()
+      |> then(&Regex.scan(~r{<code[^>]*>(\d+)}, &1))
+      |> Enum.map(&List.last/1)
+    end
+
+    test "every line is numbered, including the ones with no answer" do
+      {:ok, live, _html} = live(build_conn(), ~p"/")
+
+      # `@n` counts physical lines, so a gutter that skipped the heading and
+      # the blank would be numbering something other than what `@n` means.
+      html = render_change(live, :edit, %{"source" => "# heading\n\n19 + 22\nprose\n@3 + 100"})
+
+      assert gutter(html) == ~w(1 2 3 4 5)
+      assert html =~ "141"
+    end
+
+    test "the numbers a reader would type match what the reference resolves to" do
+      {:ok, live, _html} = live(build_conn(), ~p"/")
+
+      # Line 3 is `19 + 22`, so `@3 + 100` must be 141 and the gutter must call
+      # that line 3. The two have to agree or the numbers are decoration.
+      html = render_change(live, :edit, %{"source" => "# heading\n\n19 + 22\n@3 + 100"})
+
+      assert gutter(html) == ~w(1 2 3 4)
+      assert html =~ "141"
+    end
+
+    test "an empty sheet still numbers its one line" do
+      {:ok, live, _html} = live(build_conn(), ~p"/")
+
+      assert gutter(render_change(live, :edit, %{"source" => ""})) == ~w(1)
+    end
+  end
+
+  describe "the timeline" do
+    test "a set of dates is drawn as well as listed" do
+      {:ok, live, _html} = live(build_conn(), ~p"/")
+
+      render_change(live, :edit, %{"source" => "every Monday"})
+      html = render_click(live, :select, %{"line" => "0"})
+
+      assert html =~ "<figure"
+      # Five evenly spaced Mondays, so five marks at five distinct positions.
+      positions = Regex.scan(~r/left: ([\d.]+)%; width:/, html) |> Enum.map(&List.last/1)
+      assert length(positions) == 5
+      assert length(Enum.uniq(positions)) == 5
+    end
+
+    test "an answer with no place in time is drawn no axis" do
+      {:ok, live, _html} = live(build_conn(), ~p"/")
+
+      render_change(live, :edit, %{"source" => "19 + 22"})
+      html = render_click(live, :select, %{"line" => "0"})
+
+      assert html =~ "41"
+      refute html =~ "<figure"
+    end
+
+    test "an axis crossing zones says which clock it is in" do
+      {:ok, live, _html} = live(build_conn(), ~p"/")
+
+      source = "9am to 5pm London and 9am to 5pm New York"
+      render_change(live, :edit, %{"source" => source})
+      html = render_click(live, :select, %{"line" => "0"})
+
+      assert html =~ "Times shown in New York"
+    end
+
+    test "an ordinary clock span needs no zone caption" do
+      {:ok, live, _html} = live(build_conn(), ~p"/")
+
+      render_change(live, :edit, %{"source" => "9am to 5pm"})
+      html = render_click(live, :select, %{"line" => "0"})
+
+      assert html =~ "<figure"
+      refute html =~ "Times shown in"
+    end
+  end
+
+  describe "sharing" do
+    test "opening a shared link replaces the sheet and its locale" do
+      {:ok, live, _html} = live(build_conn(), ~p"/")
+
+      payload = LocalizePad.Share.encode("1.234,5 + 1", :de)
+      html = render_click(live, :open_shared, %{"payload" => payload})
+
+      assert html =~ "1.235,5"
+      assert html =~ ~s(value="de" selected)
+    end
+
+    test "a bad link leaves the sheet alone rather than failing the page" do
+      {:ok, live, _html} = live(build_conn(), ~p"/")
+
+      render_change(live, :edit, %{"source" => "19 + 22"})
+      html = render_click(live, :open_shared, %{"payload" => "not a real payload"})
+
+      assert html =~ "41"
+    end
+
+    test "share produces a payload that decodes back to the sheet" do
+      {:ok, live, _html} = live(build_conn(), ~p"/")
+
+      render_change(live, :edit, %{"source" => "19 + 22"})
+      render_click(live, :share)
+
+      assert_push_event(live, "share", %{payload: payload})
+      assert {:ok, "19 + 22", :en} = LocalizePad.Share.decode(payload)
+    end
+  end
+
+  describe "keyboard shortcuts" do
+    test "escape dismisses the detail panel" do
+      {:ok, live, _html} = live(build_conn(), ~p"/")
+
+      render_change(live, :edit, %{"source" => "every Monday"})
+      opened = render_click(live, :select, %{"line" => "0"})
+      dismissed = render_click(live, :dismiss)
+
+      assert opened =~ "temporal_set"
+      refute dismissed =~ "temporal_set"
+    end
+
+    test "the download shortcut sends the same file as the button" do
+      {:ok, live, _html} = live(build_conn(), ~p"/")
+
+      render_change(live, :edit, %{"source" => "19 + 22"})
+      render_click(live, :download)
+
+      assert_push_event(live, "download", %{filename: "localize-pad.md", content: content})
+      assert content =~ "19 + 22   // 41"
     end
   end
 

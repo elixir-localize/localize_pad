@@ -126,12 +126,24 @@ defmodule LocalizePad.TemporalTest do
       assert answer("June 12, 2026 + 2 months") == "August 12, 2026"
     end
 
-    test "a plural word that is not a calendar unit stays prose" do
-      # CLDR has a `night` unit, so a blanket plural fallback would turn this
-      # into "360 nights" — and a quantity will not add into a subtotal the way
-      # a number does. Unrecognised words are noise; that rule is worth more
-      # than catching one extra unit.
-      assert answer("120 * 3 nights") == "360"
+    test "a word Unity does not alias stays prose" do
+      # Unrecognised words are noise, and that rule is what makes
+      # `19 + 22 for 2 people` an answer rather than an error.
+      assert answer("120 * 3 people") == "360"
+      assert answer("120 * 3 sticks") == "360"
+    end
+
+    test "a word Unity does alias becomes a quantity, common or not" do
+      # Unity 1.1 derives plurals from the CLDR unit list, which carries a
+      # `night` unit and a `cup`. So `3 nights` is now three nights rather than
+      # prose, and the product of a rate and a night is a quantity that will
+      # not add into a plain subtotal.
+      #
+      # This is recorded rather than worked around: the vocabulary is Unity's
+      # to define, and a table here second-guessing it is what the last
+      # workaround was.
+      assert answer("120 * 3 nights") == "360 nights"
+      assert answer("2 cups") == "2 cups"
     end
 
     test "a non-calendar quantity cannot shift a date" do

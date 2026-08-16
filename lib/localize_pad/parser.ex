@@ -200,67 +200,70 @@ defmodule LocalizePad.Parser do
   # ── Expression parsing ──────────────────────────────────────────────────
 
   defp parse_expression(tokens, minimum_binding_power, variables) do
-    with {:ok, left, rest} <- tokens |> skip_to_operand(variables) |> parse_prefix(variables) do
+    with {:ok, left, rest} <-
+           tokens
+           |> skip_to_operand(variables)
+           |> parse_prefix(variables, minimum_binding_power) do
       parse_infix(left, rest, minimum_binding_power, variables)
     end
   end
 
   # A prefix position is where an operand is expected. `in` read here means the
   # unit `inch`, not the conversion keyword — position is what disambiguates.
-  defp parse_prefix([], _variables), do: {:error, :no_expression}
+  defp parse_prefix([], _variables, _binding_power), do: {:error, :no_expression}
 
-  defp parse_prefix([%Token{kind: kind, value: value} | rest], _variables)
+  defp parse_prefix([%Token{kind: kind, value: value} | rest], _variables, _binding_power)
        when kind in [:number, :ordinal] do
     {:ok, {:number, value}, rest}
   end
 
-  defp parse_prefix([%Token{kind: :unit, value: unit} | rest], _variables) do
+  defp parse_prefix([%Token{kind: :unit, value: unit} | rest], _variables, _binding_power) do
     {:ok, {:unit, unit}, rest}
   end
 
-  defp parse_prefix([%Token{kind: :line_ref, value: line} | rest], _variables) do
+  defp parse_prefix([%Token{kind: :line_ref, value: line} | rest], _variables, _binding_power) do
     {:ok, {:line_ref, line}, rest}
   end
 
-  defp parse_prefix([%Token{kind: :temporal, value: fields} | rest], _variables) do
+  defp parse_prefix([%Token{kind: :temporal, value: fields} | rest], _variables, _binding_power) do
     {:ok, {:temporal, fields}, rest}
   end
 
-  defp parse_prefix([%Token{kind: :zone, value: zone} | rest], _variables) do
+  defp parse_prefix([%Token{kind: :zone, value: zone} | rest], _variables, _binding_power) do
     {:ok, {:zone, zone}, rest}
   end
 
-  defp parse_prefix([%Token{kind: :percentage, value: value} | rest], _variables) do
+  defp parse_prefix([%Token{kind: :percentage, value: value} | rest], _variables, _binding_power) do
     {:ok, {:percentage, value}, rest}
   end
 
-  defp parse_prefix([%Token{kind: :money, value: money} | rest], _variables) do
+  defp parse_prefix([%Token{kind: :money, value: money} | rest], _variables, _binding_power) do
     {:ok, {:money, money}, rest}
   end
 
-  defp parse_prefix([%Token{kind: :currency, value: code} | rest], _variables) do
+  defp parse_prefix([%Token{kind: :currency, value: code} | rest], _variables, _binding_power) do
     {:ok, {:currency, code}, rest}
   end
 
-  defp parse_prefix([%Token{kind: :tax, value: tax} | rest], _variables) do
+  defp parse_prefix([%Token{kind: :tax, value: tax} | rest], _variables, _binding_power) do
     {:ok, {:tax, tax}, rest}
   end
 
-  defp parse_prefix([%Token{kind: :calendar, value: calendar} | rest], _variables) do
+  defp parse_prefix([%Token{kind: :calendar, value: calendar} | rest], _variables, _binding_power) do
     {:ok, {:calendar, calendar}, rest}
   end
 
-  defp parse_prefix([%Token{kind: :operator, value: :minus} | rest], variables) do
+  defp parse_prefix([%Token{kind: :operator, value: :minus} | rest], variables, _binding_power) do
     with {:ok, operand, rest} <- parse_expression(rest, @prefix_binding_power, variables) do
       {:ok, {:neg, operand}, rest}
     end
   end
 
-  defp parse_prefix([%Token{kind: :operator, value: :plus} | rest], variables) do
+  defp parse_prefix([%Token{kind: :operator, value: :plus} | rest], variables, _binding_power) do
     parse_expression(rest, @prefix_binding_power, variables)
   end
 
-  defp parse_prefix([%Token{kind: :operator, value: :lparen} | rest], variables) do
+  defp parse_prefix([%Token{kind: :operator, value: :lparen} | rest], variables, _binding_power) do
     with {:ok, inner, rest} <- parse_expression(rest, 0, variables) do
       case skip_noise(rest, variables) do
         [%Token{kind: :operator, value: :rparen} | rest] -> {:ok, inner, rest}
@@ -269,23 +272,34 @@ defmodule LocalizePad.Parser do
     end
   end
 
-  defp parse_prefix([%Token{kind: :keyword} = token | rest], _variables) do
-    # A keyword in operand position is only meaningful if it has a unit
-    # reading — this is the `3 in` case.
+  # A bare unit is not an expression. `inch` on its own is not a value, so the
+  # unit reading is only available where something can multiply it — as the
+  # right operand of an operation, which is the `3 in` case and is what a
+  # non-zero binding power means here.
+  #
+  # Without that condition a line-leading `in 3 weeks` reads its `in` as inch
+  # and answers "3 inch-weeks", which is worse than refusing: the reader has to
+  # already know the answer to notice it is wrong.
+  defp parse_prefix([%Token{kind: :keyword} = token | rest], _variables, binding_power)
+       when binding_power > 0 do
     case Token.as(token, :unit) do
       {:ok, unit} -> {:ok, {:unit, unit}, rest}
       :error -> {:error, {:unexpected, token.source}}
     end
   end
 
-  defp parse_prefix([%Token{kind: :word} | _rest] = tokens, variables) do
+  defp parse_prefix([%Token{kind: :keyword} = token | _rest], _variables, _binding_power) do
+    {:error, {:unexpected, token.source}}
+  end
+
+  defp parse_prefix([%Token{kind: :word} | _rest] = tokens, variables, _binding_power) do
     case take_variable(tokens, variables) do
       {:ok, name, rest} -> {:ok, {:variable, name}, rest}
       :error -> {:error, :no_expression}
     end
   end
 
-  defp parse_prefix([token | _rest], _variables) do
+  defp parse_prefix([token | _rest], _variables, _binding_power) do
     {:error, {:unexpected, token.source}}
   end
 
@@ -340,16 +354,15 @@ defmodule LocalizePad.Parser do
   end
 
   defp infix_operator([%Token{kind: :keyword, value: role} = token | rest] = tokens, variables) do
-    # A keyword that also names a unit, with nothing after it to operate on, is
-    # the unit. `12 ft + 3 in` ends in three inches; reading `in` as conversion
-    # would leave the line malformed for want of a target.
-    if Token.is?(token, :unit) and not operand_follows?(rest, variables) do
-      {:ok, :juxtapose, @juxtaposition, tokens}
-    else
-      case Map.fetch(@binding_powers, role) do
-        {:ok, binding_powers} -> {:ok, role, binding_powers, rest}
-        :error -> :none
-      end
+    case keyword_reading(token, rest, variables) do
+      :unit ->
+        {:ok, :juxtapose, @juxtaposition, tokens}
+
+      :keyword ->
+        case Map.fetch(@binding_powers, role) do
+          {:ok, binding_powers} -> {:ok, role, binding_powers, rest}
+          :error -> :none
+        end
     end
   end
 
@@ -372,6 +385,22 @@ defmodule LocalizePad.Parser do
   end
 
   defp infix_operator(_tokens, _variables), do: :none
+
+  # A keyword that also names a unit, with nothing after it to operate on, is
+  # the unit. `12 ft + 3 in` ends in three inches; reading `in` as conversion
+  # would leave the line malformed for want of a target.
+  #
+  # That guess is sometimes wrong — `19 + 22 in cash` is not about inches — but
+  # nothing here can tell, because both readings parse. What distinguishes them
+  # is whether the units agree, which only evaluation knows. See
+  # `LocalizePad.Line`, which retries with the reading demoted when they do not.
+  defp keyword_reading(token, rest, variables) do
+    cond do
+      not Token.is?(token, :unit) -> :keyword
+      operand_follows?(rest, variables) -> :keyword
+      true -> :unit
+    end
+  end
 
   # Whether anything ahead could serve as an operand, once prose is skipped.
   # Used to decide between the two readings of an ambiguous keyword.

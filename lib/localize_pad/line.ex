@@ -35,7 +35,7 @@ defmodule LocalizePad.Line do
 
   """
 
-  alias LocalizePad.{Evaluator, Parser, Tokenizer, Value}
+  alias LocalizePad.{Evaluator, Parser, Token, Tokenizer, Value}
 
   @type kind :: :blank | :heading | :comment | :subtotal | :declaration | :expression
 
@@ -178,18 +178,67 @@ defmodule LocalizePad.Line do
   def evaluate(%__MODULE__{expression: expression} = line, context) do
     locale = Map.fetch!(context, :locale)
     variables = Map.fetch!(context, :variables)
-    answers = Map.fetch!(context, :answers)
 
-    with {:ok, tokens} <- Tokenizer.tokenize(expression, locale: locale),
-         {:ok, ast} <- Parser.parse(tokens, variables: Map.keys(variables), locale: locale),
-         {:ok, resolved} <- resolve_line_references(ast, answers),
-         {:ok, value} <- Evaluator.eval(resolved, variables) do
-      %{line | value: value, formatted: format(value, locale), error: nil}
-      |> put_dependencies(ast, variables, context)
-    else
+    case attempt(expression, context) do
+      {:ok, value, ast} ->
+        %{line | value: value, formatted: format(value, locale), error: nil}
+        |> put_dependencies(ast, variables, context)
+
       {:error, reason} ->
         %{line | value: nil, formatted: nil, error: reason}
         |> put_dependencies(nil, variables, context)
+    end
+  end
+
+  # Errors that say the units disagreed, rather than that the line was
+  # malformed. Only these are worth a second reading — a missing operand will
+  # still be missing however the words are read.
+  @disagreements [:incompatible, :unsupported_operation]
+
+  # `19 + 22 in cash` parses as twenty-two inches, because that is what `in`
+  # after a number usually means and the parser has nothing else to go on. It
+  # is only when inches meet a dimensionless number that the reading is
+  # revealed as wrong, at which point the ambiguous words are stripped of their
+  # unit readings and the line is read again as prose.
+  #
+  # The retry is skipped when there was nothing ambiguous to demote, so an
+  # honest type error is reported once and not chased.
+  defp attempt(expression, context) do
+    locale = Map.fetch!(context, :locale)
+
+    with {:ok, tokens} <- Tokenizer.tokenize(expression, locale: locale) do
+      case compute(tokens, context) do
+        {:error, reason} when elem(reason, 0) in @disagreements ->
+          retry(tokens, context, reason)
+
+        result ->
+          result
+      end
+    end
+  end
+
+  defp retry(tokens, context, reason) do
+    demoted = Enum.map(tokens, &Token.demote/1)
+
+    if demoted == tokens do
+      {:error, reason}
+    else
+      case compute(demoted, context) do
+        {:ok, value, ast} -> {:ok, value, ast}
+        {:error, _second_reason} -> {:error, reason}
+      end
+    end
+  end
+
+  defp compute(tokens, context) do
+    locale = Map.fetch!(context, :locale)
+    variables = Map.fetch!(context, :variables)
+    answers = Map.fetch!(context, :answers)
+
+    with {:ok, ast} <- Parser.parse(tokens, variables: Map.keys(variables), locale: locale),
+         {:ok, resolved} <- resolve_line_references(ast, answers),
+         {:ok, value} <- Evaluator.eval(resolved, variables) do
+      {:ok, value, ast}
     end
   end
 

@@ -140,4 +140,99 @@ defmodule LocalizePad.TokenizerTest do
       assert {:ok, _tokens} = Tokenizer.tokenize("2 + 2", locale: :"zz-nonsense")
     end
   end
+
+  describe "source spans" do
+    defp spans(source, locale \\ :en) do
+      {:ok, tokens} = Tokenizer.tokenize(source, locale: locale)
+
+      Enum.map(tokens, fn
+        %{start: nil} = token -> {token.kind, :unplaced}
+        token -> {token.kind, binary_part(source, token.start, token.length)}
+      end)
+    end
+
+    test "every token slices back to the text it was read from" do
+      assert spans("19 + 22 kg") == [
+               {:number, "19"},
+               {:operator, "+"},
+               {:number, "22"},
+               {:unit, "kg"}
+             ]
+    end
+
+    test "a number keeps the width of what was typed, not of what it parsed to" do
+      # `02` and `2` are the same value and different text. The value cannot
+      # tell them apart, so the span is measured rather than reconstructed —
+      # an editor highlighting two characters here must cover both.
+      assert spans("02 + 1.50") == [
+               {:number, "02"},
+               {:operator, "+"},
+               {:number, "1.50"}
+             ]
+    end
+
+    test "a token built from several covers all of them" do
+      assert spans("@2 + 20% of 3rd") == [
+               {:line_ref, "@2"},
+               {:operator, "+"},
+               {:percentage, "20%"},
+               {:keyword, "of"},
+               {:ordinal, "3rd"}
+             ]
+    end
+
+    test "money covers its symbol or code as well as its amount" do
+      assert spans("$19 + 22 EUR") == [
+               {:money, "$19"},
+               {:operator, "+"},
+               {:money, "22 EUR"}
+             ]
+    end
+
+    test "a multi-word zone is covered whole" do
+      assert {:temporal, "5pm New York"} in spans("9am to 5pm New York")
+    end
+
+    test "spans run forward and never overlap" do
+      {:ok, tokens} =
+        Tokenizer.tokenize("$19 for breakfast + 22 EUR at 20% on 3/7/2026", locale: :en)
+
+      placed = Enum.reject(tokens, &(&1.start == nil))
+
+      assert length(placed) == length(tokens)
+
+      placed
+      |> Enum.chunk_every(2, 1, :discard)
+      |> Enum.each(fn [before, following] ->
+        assert before.start + before.length <= following.start,
+               "#{inspect(before.source)} overruns #{inspect(following.source)}"
+      end)
+    end
+
+    test "offsets are bytes, so multi-byte text still slices cleanly" do
+      # A `€` is three bytes and a `—` is three more. Measuring in characters
+      # here would place every token after the first one adrift.
+      assert spans("€19 + 22") == [
+               {:money, "€19"},
+               {:operator, "+"},
+               {:number, "22"}
+             ]
+
+      assert spans("1,2345 kilomètres", :fr) == [
+               {:number, "1,2345"},
+               {:unit, "kilomètres"}
+             ]
+    end
+
+    test "a line of prose places its words too" do
+      # `a` arrives as a keyword rather than a word — it is the CLDR
+      # abbreviation for `year`. It is still placed, which is what matters
+      # here; what stops it becoming a value is the parser, not the span.
+      assert spans("just a thought") == [
+               {:word, "just"},
+               {:keyword, "a"},
+               {:word, "thought"}
+             ]
+    end
+  end
 end
