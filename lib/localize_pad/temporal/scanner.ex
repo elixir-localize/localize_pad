@@ -54,6 +54,17 @@ defmodule LocalizePad.Temporal.Scanner do
   # writing `3 April` costs the user nothing.
   @date_separated ~r/\d+\s*[\/.\-]\s*\d+\s*[\/.\-]\s*\d+/u
 
+  # CJK dates *mark* their fields rather than separating them: 年 is "year",
+  # 月 "month", 日 "day". Unlike `.` and `/` those characters are not also
+  # arithmetic, so one is already unambiguous and the two-separator rule above
+  # would reject good input for a danger that does not exist here. `7月3日` is
+  # a date and there is nothing else it could be.
+  #
+  # Calendrical parses these; this filter is only what decides whether to hand
+  # it the string. Leaving them out was why a Japanese sheet could not answer
+  # a question about a Japanese date.
+  @date_cjk ~r/\d+\s*[年月日]/u
+
   @type segment :: {:text, String.t()} | {:temporal, map(), String.t()}
 
   @doc """
@@ -156,6 +167,7 @@ defmodule LocalizePad.Temporal.Scanner do
     Regex.match?(@clock_time, source) or
       Regex.match?(@day_period, source) or
       Regex.match?(@date_separated, source) or
+      Regex.match?(@date_cjk, source) or
       Regex.match?(@quarter, source) or
       names_a_month_or_weekday?(source, locale)
   end
@@ -229,10 +241,49 @@ defmodule LocalizePad.Temporal.Scanner do
   defp prepend_text(segments, ""), do: segments
   defp prepend_text(segments, text), do: [{:text, text} | segments]
 
-  # Byte offsets and lengths of each whitespace-delimited word.
+  # A full CJK date, longest form first. Used to carve candidates out of an
+  # unspaced run; the shape filter above decides whether one is worth parsing.
+  @date_cjk_span ~r/\d+\s*年\s*\d+\s*月\s*\d+\s*日|\d+\s*月\s*\d+\s*日/u
+
+  # Byte offsets and lengths of each candidate window.
+  #
+  # Whitespace-delimited words, which is the whole story for a language that
+  # writes spaces — and none of it for one that does not. `2026年7月3日は平日`
+  # arrives as a single "word", and Calendrical cannot parse that because it is
+  # a date *and a question*. So CJK dates are carved out as candidates of their
+  # own first, and the text around them is split normally.
+  #
+  # This is the piece that was missing. Calendrical parses `2026年7月3日`
+  # perfectly well; it was never being handed it.
   defp word_spans(text) do
-    ~r/\S+/u
-    |> Regex.scan(text, return: :index)
-    |> Enum.map(fn [span] -> span end)
+    dates =
+      @date_cjk_span
+      |> Regex.scan(text, return: :index)
+      |> Enum.map(fn [span] -> span end)
+
+    dates
+    |> gaps(byte_size(text))
+    |> Enum.flat_map(&whitespace_spans(text, &1))
+    |> Enum.concat(dates)
+    |> Enum.sort_by(fn {start, _length} -> start end)
   end
+
+  # The stretches between the carved-out dates, including before the first and
+  # after the last.
+  defp gaps(dates, size) do
+    {gaps, position} =
+      Enum.reduce(dates, {[], 0}, fn {start, length}, {acc, position} ->
+        {[{position, start - position} | acc], start + length}
+      end)
+
+    Enum.reverse([{position, size - position} | gaps])
+  end
+
+  defp whitespace_spans(text, {start, length}) when length > 0 do
+    ~r/\S+/u
+    |> Regex.scan(binary_part(text, start, length), return: :index)
+    |> Enum.map(fn [{offset, size}] -> {start + offset, size} end)
+  end
+
+  defp whitespace_spans(_text, _empty), do: []
 end

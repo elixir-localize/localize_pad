@@ -106,6 +106,28 @@ defmodule LocalizePad.LocalesTest do
     test "ordinary arithmetic is unaffected" do
       assert answer("2 + 2", :ja) == "4"
     end
+
+    test "Japanese dates are recognised, and asked about" do
+      # Calendrical parses `2026年7月3日` and always could. What was missing was
+      # this program ever handing it the string: candidate windows were split
+      # on whitespace, and a language that writes none arrives as a single run
+      # that is a date *and* a question. CJK dates are now carved out first.
+      assert answer("2026年7月3日", :ja) == "2026年7月3日"
+      assert answer("7月3日", :ja) == "2026年7月3日"
+
+      assert answer("2026年7月3日は平日", :ja) == "はい"
+      assert answer("2026年7月3日は何曜日", :ja) == "金曜日"
+    end
+
+    test "the CJK date shape needs one marker, not two" do
+      # The Latin rule demands two separators because `9.8` and `100/5` are
+      # ambiguous with arithmetic. 年月日 are not arithmetic in any language, so
+      # a single marker already settles it and demanding two would reject
+      # `7月3日`, which is unambiguously a date.
+      assert answer("2026 + 1", :ja) == "2,027"
+      assert answer("9.8 * 2", :ja) == "19.6"
+      assert answer("100 / 5", :ja) == "20"
+    end
   end
 
   describe "every locale reads its own sheet" do

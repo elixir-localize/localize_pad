@@ -226,7 +226,8 @@ defmodule LocalizePad.Lexicon do
       # this matches; see the note in `LocalizePad.Temporal.Recurrence`.
       every: ["毎週", "毎月", "毎年", "毎日", "毎"],
       weekday: ["平日", "営業日"],
-      day_of_week: [["何曜日"]],
+      # The segmenter splits 何曜日 into 何 and 曜日, so the set is the pair.
+      day_of_week: [["何", "曜日"], ["何曜日"]],
       what: ["何"],
       ordinals: %{
         "第一" => 1,

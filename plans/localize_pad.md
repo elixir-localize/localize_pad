@@ -952,6 +952,20 @@ also answers to itself plus an `s`. That is the same trailing-`s` heuristic that
 wrong on units, kept safe by scope — seven entries added to a table of seven, inside a line
 already known to be a recurrence, rather than a retry against thousands of aliases.
 
+**Japanese dates worked in Calendrical all along; this program was never handing it the string.**
+The candidate windows the scanner offers were split on whitespace, which is the entire story for
+a language that writes spaces and none of it for one that does not: `2026年7月3日は平日` arrives
+as a single run that is a date *and* a question, and no parser can be expected to take that.
+CJK dates are now carved out as candidates of their own before the whitespace split.
+
+The shape filter needed a second rule rather than a wider one. The Latin rule demands *two*
+separators because `9.8` and `100/5` are ambiguous with arithmetic; 年月日 are not arithmetic in
+any language, so one marker already settles it and demanding two would have rejected `7月3日`.
+Two rules for two situations, rather than one rule stretched until it fits neither.
+
+An earlier note here called this a gap in Japanese date *support*. That was the wrong shape of
+claim — the support existed, the plumbing did not.
+
 **Still English-only: the answers.** A German sheet reads `jeden Montag` and answers `5 dates ·
 17.08.2026, …` — the dates are localized and the word "dates" is not. Fixing it means routing
 that summary through the Gettext backend (already configured with
