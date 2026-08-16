@@ -468,26 +468,45 @@ defmodule LocalizePad.Tokenizer do
     mark_preferences(tokens, locale, lexicon_locale(locale))
   end
 
-  defp mark_preferences([], _locale, _lexicon), do: []
+  defp mark_preferences(tokens, locale, lexicon, previous \\ nil)
 
-  defp mark_preferences([%Token{kind: :word, source: word} = token | rest], locale, lexicon) do
-    if Lexicon.preference?(word, lexicon) do
+  defp mark_preferences([], _locale, _lexicon, _previous), do: []
+
+  defp mark_preferences(
+         [%Token{kind: :word, source: word} = token | rest],
+         locale,
+         lexicon,
+         previous
+       ) do
+    if Lexicon.preference?(word, lexicon) and target_position?(previous, rest) do
       {covered, rest} = with_usage(token, rest, lexicon)
       usage = usage_of(covered, lexicon)
       source = Enum.map_join(covered, " ", & &1.source)
 
       [
         Token.covering(Token.new(:preference, {locale, usage}, source), covered)
-        | mark_preferences(rest, locale, lexicon)
+        | mark_preferences(rest, locale, lexicon, token)
       ]
     else
-      [token | mark_preferences(rest, locale, lexicon)]
+      [token | mark_preferences(rest, locale, lexicon, token)]
     end
   end
 
-  defp mark_preferences([token | rest], locale, lexicon) do
-    [token | mark_preferences(rest, locale, lexicon)]
+  defp mark_preferences([token | rest], locale, lexicon, _previous) do
+    [token | mark_preferences(rest, locale, lexicon, token)]
   end
+
+  # `local` and `preferred` are ordinary words, and claiming them wherever they
+  # appear cost real lines: `19 + 22 for the local shop` was refused, and a
+  # variable called `local tax` could not be used.
+  #
+  # A word is the conversion target only where a target belongs — straight
+  # after `in`/`to`, or at the very end of the line with the value before it.
+  # `local shop` fails both: something follows it, and no conversion introduced
+  # it, so it stays the ordinary word it was.
+  defp target_position?(%Token{kind: :keyword, value: :to}, _rest), do: true
+  defp target_position?(_previous, []), do: true
+  defp target_position?(_previous, _rest), do: false
 
   # A usage word counts only directly after the preference word, which is what
   # lets `height` and `weight` stay ordinary variable names everywhere else.

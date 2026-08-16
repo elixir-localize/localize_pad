@@ -40,6 +40,51 @@ defmodule LocalizePad.PreferenceTest do
     end
   end
 
+  describe "the word for the reader's own units" do
+    test "`preferred` is CLDR's own term and reads best" do
+      assert answer("70 kg in preferred units", "en-US") == "154.323584 pounds"
+      assert answer("42.195 km preferred", "en-US") == "26.218757 miles"
+    end
+
+    test "`local` still works, so sheets written with it keep working" do
+      assert answer("70 kg in local units", "en-US") == "154.323584 pounds"
+    end
+
+    test "both carry a usage" do
+      assert answer("1.8 m in preferred height units", "en-US") ==
+               "5 feet and 10.866142 inches"
+    end
+
+    test "each locale has its own word" do
+      assert answer("70 kg in bevorzugten Einheiten", "de") == "70 Kilogramm"
+      assert answer("42 km 優先", "ja") == "42 キロメートル"
+    end
+  end
+
+  describe "an ordinary word stays ordinary" do
+    # `local` and `preferred` are words people write. Claiming them wherever
+    # they appeared refused `19 + 22 for the local shop` and broke a variable
+    # called `local tax`.
+    test "prose containing the word is still prose" do
+      assert answer("19 + 22 for the local shop", "en-US") == "41"
+      assert answer("19 + 22 my preferred lunch", "en-US") == "41"
+    end
+
+    test "and a variable named with one still works" do
+      [_declaration, use] =
+        Sheet.new("local tax = 5\nlocal tax * 3", locale: "en-US").lines
+
+      assert use.formatted == "15"
+    end
+
+    test "the word counts only where a conversion target belongs" do
+      # Straight after `in`/`to`, or at the end of the line with the value
+      # before it. `local shop` is neither.
+      assert answer("42 km in preferred units", "en-US") == "26.09759 miles"
+      assert answer("42 km preferred", "en-US") == "26.09759 miles"
+    end
+  end
+
   describe "word order" do
     test "the target may follow the value directly" do
       # `in lokal` is not German. The postfix form is what makes the vocabulary

@@ -312,8 +312,13 @@ defmodule LocalizePad.Lexicon do
   end
 
   # Words that name the reader's own units as a conversion target: `42 km in
-  # local units`. The answer comes from CLDR's unit preferences for the sheet's
-  # territory, so `en-AU` keeps kilometres where `en-US` gets miles.
+  # preferred units`. The answer comes from CLDR's unit preferences for the
+  # sheet's territory, so `en-AU` keeps kilometres where `en-US` gets miles.
+  #
+  # `preferred` first because it is CLDR's own word for this, and it says what
+  # the answer depends on. `local` reads well too and both are kept: a sheet
+  # already written with one must not stop working because the other reads
+  # better.
   #
   # Single words only, deliberately. `local units` and `unités locales` then
   # work without a multi-word matcher, because the second word falls through as
@@ -322,11 +327,11 @@ defmodule LocalizePad.Lexicon do
   # These are *targets*, not operators, so they sit here rather than in the
   # role table — the same reason `today` does.
   @preferences %{
-    en: ["local", "locally"],
-    de: ["lokal", "lokale", "lokalen", "ortsüblich"],
-    fr: ["local", "locale", "locales"],
-    es: ["local", "locales"],
-    ja: ["現地", "ローカル"]
+    en: ["preferred", "local", "locally"],
+    de: ["bevorzugt", "bevorzugte", "bevorzugten", "lokal", "lokale", "lokalen", "ortsüblich"],
+    fr: ["préféré", "préférée", "préférés", "préférées", "local", "locale", "locales"],
+    es: ["preferido", "preferida", "preferidos", "preferidas", "local", "locales"],
+    ja: ["優先", "現地", "ローカル"]
   }
 
   # What the quantity is *for*, which is the other half of what CLDR needs to
