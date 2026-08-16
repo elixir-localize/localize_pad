@@ -148,6 +148,83 @@ defmodule LocalizePadWeb.SheetLiveTest do
     end
   end
 
+  describe "the examples" do
+    test "they are offered by name" do
+      {:ok, _live, html} = live(build_conn(), ~p"/")
+
+      assert html =~ "Questions about time"
+      assert html =~ "Ein deutsches Blatt"
+    end
+
+    test "choosing one loads it and its locale together" do
+      {:ok, live, _html} = live(build_conn(), ~p"/")
+
+      html = render_click(live, :example, %{"id" => "05-ein-deutsches-blatt"})
+
+      # The German pad read in English would answer differently, so the locale
+      # travels with it.
+      assert html =~ ~s(value="de" selected)
+      assert html =~ "1.235,5"
+      assert html =~ "5 Termine"
+    end
+
+    test "an id that names no example leaves the sheet alone" do
+      {:ok, live, _html} = live(build_conn(), ~p"/")
+
+      render_change(live, :edit, %{"source" => "19 + 22"})
+      html = render_click(live, :example, %{"id" => "../../etc/passwd"})
+
+      assert html =~ "41"
+    end
+  end
+
+  describe "opening a sheet" do
+    test "a downloaded sheet opens back to what it was" do
+      {:ok, live, _html} = live(build_conn(), ~p"/")
+
+      original = "# Trip\n\nBreakfast: 19 + 22\nhotel = 120\nhotel * 3"
+      markdown = original |> LocalizePad.Sheet.new(locale: :en) |> LocalizePad.Sheet.to_markdown()
+
+      html = render_click(live, :open, %{"content" => markdown})
+
+      assert html =~ "41"
+      assert html =~ "360"
+      # The answer column the exporter wrote must not come back as text, or a
+      # second download would carry it twice.
+      refute html =~ "// 41"
+    end
+
+    test "a file that names its locale is read in it" do
+      {:ok, live, _html} = live(build_conn(), ~p"/")
+
+      markdown =
+        "1.234,5 + 1" |> LocalizePad.Sheet.new(locale: :de) |> LocalizePad.Sheet.to_markdown()
+
+      html = render_click(live, :open, %{"content" => markdown})
+
+      assert html =~ "1.235,5"
+      assert html =~ ~s(value="de" selected)
+    end
+
+    test "a plain list of sums is a sheet" do
+      {:ok, live, _html} = live(build_conn(), ~p"/")
+
+      html = render_click(live, :open, %{"content" => "19 + 22\n3 meters to feet"})
+
+      assert html =~ "41"
+      assert html =~ "9.84252 feet"
+    end
+
+    test "an unreadable file leaves the sheet alone" do
+      {:ok, live, _html} = live(build_conn(), ~p"/")
+
+      render_change(live, :edit, %{"source" => "19 + 22"})
+      html = render_click(live, :open, %{"content" => "   "})
+
+      assert html =~ "41"
+    end
+  end
+
   describe "the timeline" do
     test "a set of dates is drawn as well as listed" do
       {:ok, live, _html} = live(build_conn(), ~p"/")

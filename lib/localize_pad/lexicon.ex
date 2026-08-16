@@ -134,7 +134,10 @@ defmodule LocalizePad.Lexicon do
   @recurrence %{
     en: %{
       every: ["every", "each"],
-      weekday: ["weekday", "weekdays"],
+      weekday: ["workday", "workdays", "weekday", "weekdays", "business"],
+      # Word sets, each of which must appear in full. `day` and `week` together
+      # catch "what day of the week is…" without claiming either word alone.
+      day_of_week: [["day", "week"]],
       ordinals: %{
         "first" => 1,
         "second" => 2,
@@ -147,7 +150,8 @@ defmodule LocalizePad.Lexicon do
     de: %{
       # `jeden Montag`, `alle zwei Wochen`.
       every: ["jeden", "jede", "jedes", "alle"],
-      weekday: ["wochentag", "wochentage", "werktag", "werktage"],
+      weekday: ["werktag", "werktage", "arbeitstag", "arbeitstage"],
+      day_of_week: [["wochentag"]],
       # Strong and weak endings both, because both are written.
       ordinals: %{
         "erster" => 1,
@@ -173,8 +177,10 @@ defmodule LocalizePad.Lexicon do
     fr: %{
       # `chaque lundi`, `tous les lundis`. `les` is noise and stays noise.
       every: ["chaque", "tous", "toutes"],
-      # `jour ouvrable` is two words and the marker only needs one of them.
-      weekday: ["ouvrable", "ouvrables"],
+      # `jour ouvrable` and `jour ouvré` are two words each and the marker only
+      # needs the one that carries the meaning.
+      weekday: ["ouvrable", "ouvrables", "ouvré", "ouvrés"],
+      day_of_week: [["jour", "semaine"]],
       ordinals: %{
         "premier" => 1,
         "première" => 1,
@@ -191,7 +197,8 @@ defmodule LocalizePad.Lexicon do
     es: %{
       # `cada lunes`, `todos los martes`.
       every: ["cada", "todos", "todas"],
-      weekday: ["laborable", "laborables"],
+      weekday: ["laborable", "laborables", "hábil", "hábiles"],
+      day_of_week: [["día", "semana"]],
       ordinals: %{
         "primer" => 1,
         "primero" => 1,
@@ -214,7 +221,8 @@ defmodule LocalizePad.Lexicon do
       # what it repeats, so the segmenter has to split it off before any of
       # this matches; see the note in `LocalizePad.Temporal.Recurrence`.
       every: ["毎週", "毎月", "毎年", "毎日", "毎"],
-      weekday: ["平日"],
+      weekday: ["平日", "営業日"],
+      day_of_week: [["何曜日"]],
       ordinals: %{
         "第一" => 1,
         "第1" => 1,
@@ -500,6 +508,49 @@ defmodule LocalizePad.Lexicon do
   end
 
   @doc """
+  Returns whether the words name a "which day of the week" question.
+
+  Matched as word *sets* rather than single markers, because the question is a
+  compound in most languages — `day` and `week` in English, `jour` and
+  `semaine` in French — and claiming either word alone would swallow far too
+  many ordinary lines.
+
+  German is why this is separate from `weekday?/2` at all: `Werktag` is a
+  working day and `Wochentag` a day of the week, and a table that flattened
+  them would answer the wrong one of the two questions.
+
+  ### Arguments
+
+  * `words` - the line's words, already downcased.
+
+  * `locale` - a locale identifier. Locales without an authored table fall
+    back to `:en`.
+
+  ### Returns
+
+  * `true` or `false`.
+
+  ### Examples
+
+      iex> LocalizePad.Lexicon.day_of_week?(~w(what day of the week is it), :en)
+      true
+
+      iex> LocalizePad.Lexicon.day_of_week?(~w(welcher wochentag), :de)
+      true
+
+      iex> LocalizePad.Lexicon.day_of_week?(~w(is it a workday), :en)
+      false
+
+  """
+  @spec day_of_week?([String.t()], atom()) :: boolean()
+  def day_of_week?(words, locale \\ :en) when is_list(words) do
+    locale
+    |> recurrence()
+    |> Map.get(:day_of_week, [])
+    |> Enum.any?(fn required -> Enum.all?(required, &(&1 in words)) end)
+  end
+
+  @doc """
   Returns the recurrence table for a locale.
 
   Used by the tokenizer to build a segmentation vocabulary for scripts written
@@ -519,7 +570,7 @@ defmodule LocalizePad.Lexicon do
       ["every", "each"]
 
   """
-  @spec recurrence(atom()) :: %{every: [String.t()], weekday: [String.t()], ordinals: map()}
+  @spec recurrence(atom()) :: map()
   def recurrence(locale \\ :en) do
     Map.get(@recurrence, locale, @recurrence.en)
   end

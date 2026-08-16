@@ -35,7 +35,7 @@ defmodule LocalizePad.Line do
 
   """
 
-  alias LocalizePad.{Evaluator, Parser, Token, Tokenizer, Value}
+  alias LocalizePad.{Evaluator, Parser, Telemetry, Token, Tokenizer, Value}
 
   @type kind :: :blank | :heading | :comment | :subtotal | :declaration | :expression
 
@@ -209,13 +209,25 @@ defmodule LocalizePad.Line do
     with {:ok, tokens} <- Tokenizer.tokenize(expression, locale: locale) do
       case compute(tokens, context) do
         {:error, reason} when elem(reason, 0) in @disagreements ->
-          retry(tokens, context, reason)
+          tokens |> retry(context, reason) |> report(tokens, locale)
 
         result ->
-          result
+          report(result, tokens, locale)
       end
     end
   end
+
+  # A refused line is the only signal there is about which phrasings people
+  # expect to work, so it is reported — as a shape, never as text. See
+  # `LocalizePad.Telemetry`, which is where the promise not to record anyone's
+  # sheet is actually kept.
+  defp report({:error, reason}, tokens, locale) do
+    Telemetry.refused(reason, tokens, locale)
+
+    {:error, reason}
+  end
+
+  defp report(result, _tokens, _locale), do: result
 
   defp retry(tokens, context, reason) do
     demoted = Enum.map(tokens, &Token.demote/1)

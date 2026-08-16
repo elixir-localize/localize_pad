@@ -1003,6 +1003,31 @@ shortcuts, the timeline pane, syntax highlighting and the line-number gutter are
 **Deployed** at <https://pad.elixir-localize.com>. Outstanding: accounts, sheet persistence
 across devices, and sheetbooks.
 
+**Sheets open as well as save.** `Sheet.from_markdown/1` undoes what the exporter does — the
+answers are written as an aligned `//` column, and keeping them on the way in would mean the
+next export wrote them twice and the one after three times. The column is matched by the
+separator the exporter uses; a comment somebody typed with exactly that spacing is absorbed, and
+that is stated in the docs rather than hidden. A file with no fenced block is taken whole,
+because somebody pasting sums into a `.txt` has made a sheet.
+
+The file is read in the browser and arrives as text, so an upload is an ordinary edit by the
+time the server sees it. No `allow_upload`, nothing in a temporary directory, and the promise
+that the server never receives a sheet survives a feature that looks like it should break it.
+
+**Six example pads ship in `priv/examples`, and the documentation is the pad.** Each is a working
+sheet whose own comments explain it, which is the only form of documentation here that cannot
+rot unnoticed: the suite evaluates every line of every example and fails the build when a claim
+stops being true. Writing them found two Soulver phrasings that do not work — `180 is what % off
+200` and `$30/day is what per year`, both of the "is what" family — so they are absent rather
+than aspirational.
+
+They also found the cost of Unity 1.1's wider vocabulary in practice. The first draft opened
+with `$240 for two nights at the hotel`, which fails: `nights` is a unit now, and money times a
+night is not a quantity that adds. The example was reworded; the vocabulary question stands.
+
+Metadata comes from the files — locale from the `Locale:` line, title from the first heading —
+so there is no second place for an example's name to disagree with the sheet.
+
 **The answers are now localized too, not just the numbers in them.** Almost everything in an
 answer comes from CLDR and was already right. What was left was the three strings this program
 writes itself — `yes`, `no`, and the `N dates` heading a truncated set — and a German sheet

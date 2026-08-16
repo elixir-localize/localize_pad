@@ -348,10 +348,32 @@ defmodule LocalizePad.TemporalTest do
       assert answer("December 24, 2026 + 2 workdays") == "December 28, 2026"
     end
 
-    test "naming the weekday, in the sheet's own language" do
+    test "naming the weekday, asked in the sheet's own language" do
+      # The question is asked in each language, not only answered in it. The
+      # English phrasing used to work under `:de` because the matcher's
+      # vocabulary was hardcoded English; that was the same defect as a German
+      # sheet accepting `per`, and it is gone.
       assert answer("day of the week on January 24, 1984", locale: :en) == "Tuesday"
-      assert answer("day of the week on 24.01.1984", locale: :de) == "Dienstag"
-      assert answer("day of the week on 24/01/1984", locale: :fr) == "mardi"
+      assert answer("welcher Wochentag ist der 24.01.1984", locale: :de) == "Dienstag"
+      assert answer("quel jour de la semaine est le 24/01/1984", locale: :fr) == "mardi"
+      assert answer("qué día de la semana es el 24/01/1984", locale: :es) == "martes"
+    end
+
+    test "workday questions are asked in the sheet's own language too" do
+      # German distinguishes these and so does the lexicon: `Werktag` is a
+      # working day, `Wochentag` a day of the week. Flattening them would
+      # answer the wrong one of the two questions.
+      assert answer("ist der 3. Juli 2026 ein Werktag", locale: :de) == "ja"
+      assert answer("3 Werktage nach dem 24. Dezember 2026", locale: :de) == "29. Dezember 2026"
+      assert answer("3 Werktage vor dem 24. Dezember 2026", locale: :de) == "21. Dezember 2026"
+
+      assert answer("le 3 juillet 2026 est-il un jour ouvrable", locale: :fr) == "oui"
+      assert answer("es el 3 de julio de 2026 un día laborable", locale: :es) == "sí"
+    end
+
+    test "an English workday phrase is not a German one" do
+      # `workday` is not a German word, so a German sheet reads it as prose.
+      refute answer("is 3 July 2026 a workday", locale: :de) == "ja"
     end
 
     test "public holidays are not counted yet" do

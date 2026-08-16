@@ -30,10 +30,7 @@ defmodule LocalizePad.Temporal.Workdays do
 
   """
 
-  alias LocalizePad.Token
-
-  @markers ~w(workday workdays weekday weekdays)
-  @business ~w(business)
+  alias LocalizePad.{Lexicon, Token}
 
   @type node_type :: {:workdays, atom(), map()}
 
@@ -65,12 +62,12 @@ defmodule LocalizePad.Temporal.Workdays do
     dates = Enum.filter(tokens, &(&1.kind == :temporal))
 
     cond do
-      names_weekday_question?(words) and dates != [] ->
+      Lexicon.day_of_week?(words, lexicon_locale(locale)) and dates != [] ->
         {:ok,
          {:workdays, :day_of_week,
           %{date: hd(dates).value, territory: territory(locale), locale: locale}}}
 
-      not mentions_workdays?(words) ->
+      not mentions_workdays?(words, lexicon_locale(locale)) ->
         :error
 
       true ->
@@ -99,7 +96,7 @@ defmodule LocalizePad.Temporal.Workdays do
          {:workdays, :shift,
           %{
             date: hd(dates).value,
-            count: signed(count, words),
+            count: signed(count, words, lexicon_locale(locale)),
             territory: territory,
             locale: locale
           }}}
@@ -114,18 +111,30 @@ defmodule LocalizePad.Temporal.Workdays do
     end
   end
 
-  # `2 workdays before` counts backwards.
-  defp signed(count, words) do
-    if "before" in words or "ago" in words, do: -count, else: count
+  # `2 workdays before` counts backwards, and so does `2 Werktage vor` — the
+  # direction words are already roles in the lexicon, so this asks it rather
+  # than keeping a second English-only list.
+  defp signed(count, words, locale) do
+    if Enum.any?(words, &(Lexicon.role(&1, locale) == {:ok, :before})) do
+      -count
+    else
+      count
+    end
   end
 
-  defp mentions_workdays?(words) do
-    Enum.any?(words, &(&1 in @markers)) or Enum.any?(words, &(&1 in @business))
+  defp mentions_workdays?(words, locale) do
+    Enum.any?(words, &Lexicon.weekday?(&1, locale))
   end
 
-  defp names_weekday_question?(words) do
-    ("day" in words and "week" in words) or
-      (("weekday" in words or "weekdays" in words) and "on" in words)
+  # The lexicon is keyed by language, so a regional tag reads its parent's
+  # vocabulary rather than falling all the way back to English.
+  defp lexicon_locale(locale) do
+    case Localize.validate_locale(locale) do
+      {:ok, tag} -> String.to_existing_atom(to_string(tag.language))
+      {:error, _reason} -> :en
+    end
+  rescue
+    ArgumentError -> :en
   end
 
   defp find_count(tokens) do

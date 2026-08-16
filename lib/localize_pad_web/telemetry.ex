@@ -21,6 +21,16 @@ defmodule LocalizePadWeb.Telemetry do
 
   def metrics do
     [
+      # Sheet Metrics
+      #
+      # Which shapes of line people write that the engine will not read. The
+      # tags are the whole point and are also the whole risk: see
+      # `LocalizePad.Telemetry` for why none of them is the text anyone typed.
+      counter("localize_pad.line.refused.count",
+        tags: [:reason, :shape, :locale],
+        description: "Lines the engine could not evaluate, by failure category and grammar"
+      ),
+
       # Phoenix Metrics
       summary("phoenix.endpoint.start.system_time",
         unit: {:native, :millisecond}

@@ -148,11 +148,7 @@ defmodule LocalizePad.Tokenizer do
       elements when is_list(elements) ->
         elements
         |> element_spans(text)
-        |> Enum.flat_map(fn {element, start, length} ->
-          element
-          |> tokenize_element(locale)
-          |> place_in(binary_part(text, start, length), offset + start, not is_binary(element))
-        end)
+        |> Enum.flat_map(&tokenize_span(&1, text, locale, offset))
 
       # `scan/2` returns an error tuple for an unknown locale or oversized
       # input. Neither should take a sheet down, so the line simply produces
@@ -164,37 +160,76 @@ defmodule LocalizePad.Tokenizer do
 
   # `scan/2` hands back numbers already parsed, which loses their text — `"02"`
   # and `"2"` both arrive as `2`. The *spans* survive, though: the text runs
-  # come back verbatim, so locating the next one leaves a gap, and the gap is
-  # exactly the number that was consumed there.
+  # come back verbatim, so each one can be located exactly, and a number is
+  # whatever sits in the gap before the next of them.
+  #
+  # Numbers *can* arrive adjacent, which an earlier version of this asserted
+  # they could not: `2026-07-03` scans as `[2026, -7, -3]`, the hyphens read as
+  # signs rather than separators. Two numbers sharing one gap cannot be told
+  # apart — nothing here knows where `-07` ends and `-03` begins — so they are
+  # left unplaced rather than guessed at, on the same principle as everything
+  # else here: an editor can skip what it cannot locate, but it cannot
+  # un-highlight a wrong guess.
   defp element_spans(elements, text, cursor \\ 0)
 
   defp element_spans([], _text, _cursor), do: []
 
   defp element_spans([element | rest], text, cursor) when is_binary(element) do
-    length = byte_size(element)
+    case locate(text, element, cursor) do
+      {:ok, start, length} ->
+        [{element, start, length} | element_spans(rest, text, start + length)]
 
-    [{element, cursor, length} | element_spans(rest, text, cursor + length)]
-  end
-
-  defp element_spans([number | rest], text, cursor) do
-    length = number_length(rest, text, cursor)
-
-    [{number, cursor, length} | element_spans(rest, text, cursor + length)]
-  end
-
-  # A number runs up to whatever text follows it, or to the end of the run when
-  # nothing does. `scan/2` never returns two numbers in a row — it would have
-  # read them as one — so the element after a number is text or nothing.
-  defp number_length([following | _rest], text, cursor) when is_binary(following) do
-    remaining = byte_size(text) - cursor
-
-    case :binary.match(text, following, scope: {cursor, remaining}) do
-      {start, _length} -> start - cursor
-      :nomatch -> remaining
+      :error ->
+        [{element, nil, nil} | element_spans(rest, text, cursor)]
     end
   end
 
-  defp number_length(_rest, text, cursor), do: byte_size(text) - cursor
+  defp element_spans(elements, text, cursor) do
+    {numbers, rest} = Enum.split_while(elements, &(not is_binary(&1)))
+    finish = next_text_start(rest, text, cursor)
+
+    case numbers do
+      [only] -> [{only, cursor, finish - cursor} | element_spans(rest, text, finish)]
+      several -> Enum.map(several, &{&1, nil, nil}) ++ element_spans(rest, text, finish)
+    end
+  end
+
+  defp next_text_start([following | _rest], text, cursor) when is_binary(following) do
+    case locate(text, following, cursor) do
+      {:ok, start, _length} -> start
+      :error -> byte_size(text)
+    end
+  end
+
+  defp next_text_start(_none, text, _cursor), do: byte_size(text)
+
+  defp locate(text, fragment, cursor) when cursor <= byte_size(text) do
+    case :binary.match(text, fragment, scope: {cursor, byte_size(text) - cursor}) do
+      {start, length} -> {:ok, start, length}
+      :nomatch -> :error
+    end
+  end
+
+  defp locate(_text, _fragment, _cursor), do: :error
+
+  defp tokenize_span({element, nil, _length}, _text, locale, _offset) do
+    tokenize_element(element, locale)
+  end
+
+  defp tokenize_span({element, start, length}, text, locale, offset) do
+    element
+    |> tokenize_element(locale)
+    |> place_in(slice(text, start, length), offset + start, not is_binary(element))
+  end
+
+  # Belt and braces. Every span above is computed from `text` itself, but this
+  # sits on the render path and a slice that ran off the end would raise rather
+  # than lose a colour.
+  defp slice(text, start, length) do
+    available = max(byte_size(text) - start, 0)
+
+    binary_part(text, min(start, byte_size(text)), min(max(length, 0), available))
+  end
 
   # Every token a text run produces carries a verbatim slice of it, and they
   # come out in order, so locating each in turn from a running cursor places

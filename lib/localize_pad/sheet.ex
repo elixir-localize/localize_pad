@@ -316,6 +316,104 @@ defmodule LocalizePad.Sheet do
 
   # Answers line up in a column, as they do on screen. The width is the longest
   # source line, so nothing is truncated and the block stays scannable.
+  @doc """
+  Reads a sheet back out of the Markdown `to_markdown/2` writes.
+
+  ## What has to be undone
+
+  The export writes each answer as a `//` comment aligned into a column, which
+  is what makes it paste back in as a working sheet. It also makes it grow: a
+  file imported and exported again would carry `// 41   // 41`, and once more
+  after that. So the answer column is stripped on the way in.
+
+  It is stripped by matching the separator the exporter writes — three spaces
+  before the slashes. That is a convention, not a proof: a comment somebody
+  typed by hand with exactly three spaces in front of it is indistinguishable
+  from a generated one and will be absorbed. Comments written with one or two
+  spaces survive, as does a whole line that is a comment. The alternative was
+  keeping the answers, which compounds, or re-evaluating every line to see
+  whether the comment matches its own answer, which is slower and still wrong
+  for a line whose comment happens to be its answer.
+
+  ## Anything else is a sheet already
+
+  A file with no fenced block is taken whole. Someone pasting a plain list of
+  sums into a `.txt` has made a sheet, and refusing it because it lacks a
+  header this program wrote would be pedantry.
+
+  ### Arguments
+
+  * `markdown` - the file's contents.
+
+  ### Returns
+
+  * `{:ok, source, locale}`, where `locale` is `nil` when the file does not
+    name one — the caller keeps whatever locale it is already using rather
+    than having one guessed for it.
+
+  * `{:error, :empty}` when there is nothing to read. Upload is untrusted
+    input; this never raises.
+
+  ### Examples
+
+      iex> markdown = LocalizePad.Sheet.new("19 + 22", locale: :en) |> LocalizePad.Sheet.to_markdown()
+      iex> LocalizePad.Sheet.from_markdown(markdown)
+      {:ok, "19 + 22", :en}
+
+      iex> LocalizePad.Sheet.from_markdown("2 + 2\\n3 * 3")
+      {:ok, "2 + 2\\n3 * 3", nil}
+
+      iex> LocalizePad.Sheet.from_markdown("   ")
+      {:error, :empty}
+
+  """
+  @spec from_markdown(String.t()) :: {:ok, String.t(), atom() | nil} | {:error, :empty}
+  def from_markdown(markdown) when is_binary(markdown) do
+    source =
+      markdown
+      |> fenced_block()
+      |> String.split("\n")
+      |> Enum.map_join("\n", &strip_answer/1)
+      |> String.trim_trailing()
+
+    if String.trim(source) == "" do
+      {:error, :empty}
+    else
+      {:ok, source, stated_locale(markdown)}
+    end
+  end
+
+  def from_markdown(_markdown), do: {:error, :empty}
+
+  # The first fenced block, or the whole document when there is none.
+  defp fenced_block(markdown) do
+    case String.split(markdown, ~r/^```.*$/m, parts: 3) do
+      [_before, block, _after] -> String.trim(block, "\n")
+      _no_fence -> markdown
+    end
+  end
+
+  @exported_answer ~r/[ ]{3}\/\/ .*$/
+
+  # The padding that aligned the answer column goes with the answer. Trailing
+  # whitespace means nothing to a sheet — `Line.classify/2` trims it anyway —
+  # so removing it is what makes an import and re-export stable rather than
+  # slowly accumulating spaces.
+  defp strip_answer(line) do
+    line
+    |> String.replace(@exported_answer, "")
+    |> String.trim_trailing()
+  end
+
+  defp stated_locale(markdown) do
+    with [_whole, name] <- Regex.run(~r/^Locale:\s*`([^`]+)`/m, markdown),
+         {:ok, language_tag} <- Localize.validate_locale(name) do
+      language_tag.cldr_locale_id
+    else
+      _unstated -> nil
+    end
+  end
+
   defp column_width(%__MODULE__{lines: lines}) do
     lines
     |> Enum.filter(& &1.formatted)

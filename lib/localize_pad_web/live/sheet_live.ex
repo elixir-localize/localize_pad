@@ -79,6 +79,14 @@ defmodule LocalizePadWeb.SheetLive do
   A shared link beats whatever is in `localStorage`: someone who follows a link
   wants the sheet in the link.
 
+  ## Opening a sheet
+
+  The file is read in the browser and arrives as text, so an upload is an
+  ordinary edit by the time the server sees it. That is not laziness about
+  `allow_upload` — it is the same promise the rest of this makes: the server
+  never receives a file, and there is nothing in a temporary directory to
+  clean up or leak.
+
   ## Answers that do not fit
 
   Some answers are sets. `every Friday the 13th` is five dates, and a margin
@@ -94,7 +102,7 @@ defmodule LocalizePadWeb.SheetLive do
 
   use LocalizePadWeb, :live_view
 
-  alias LocalizePad.{Highlight, Share, Sheet, Timeline, Value}
+  alias LocalizePad.{Examples, Highlight, Share, Sheet, Timeline, Value}
 
   @sample """
   # A first sheet
@@ -123,6 +131,7 @@ defmodule LocalizePadWeb.SheetLive do
      |> assign(:locale, locale)
      |> assign(:source, @sample)
      |> assign(:locale_options, locale_options())
+     |> assign(:examples, Examples.all())
      |> assign(:selected, nil)
      |> recalculate()}
   end
@@ -165,6 +174,50 @@ defmodule LocalizePadWeb.SheetLive do
 
   def handle_event("dismiss", _params, socket) do
     {:noreply, socket |> assign(:selected, nil) |> assign(:detail, nil)}
+  end
+
+  # The hook reads the file in the browser and sends its text, so an upload is
+  # an ordinary edit by the time it arrives — no upload plumbing, and the
+  # server still never receives a file. `from_markdown/1` undoes the answer
+  # column the exporter writes; see `LocalizePad.Sheet`.
+  def handle_event("open", %{"content" => content}, socket) when is_binary(content) do
+    case Sheet.from_markdown(content) do
+      {:ok, source, locale} ->
+        # A file that names its locale carries it, for the same reason a shared
+        # link does: `1.234,5` is a different number in `de`, so opening a
+        # German sheet under an English locale would change its answers.
+        locale = locale || socket.assigns.locale
+        Localize.put_locale(locale)
+
+        {:noreply,
+         socket
+         |> assign(:source, source)
+         |> assign(:locale, locale)
+         |> assign(:selected, nil)
+         |> recalculate()}
+
+      # Somebody opened a photograph. Leaving the sheet alone beats clearing it.
+      {:error, :empty} ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_event("example", %{"id" => id}, socket) do
+    case Examples.fetch(id) do
+      {:ok, example} ->
+        locale = example.locale || socket.assigns.locale
+        Localize.put_locale(locale)
+
+        {:noreply,
+         socket
+         |> assign(:source, example.source)
+         |> assign(:locale, locale)
+         |> assign(:selected, nil)
+         |> recalculate()}
+
+      :error ->
+        {:noreply, socket}
+    end
   end
 
   def handle_event("download", _params, socket) do
@@ -315,6 +368,31 @@ defmodule LocalizePadWeb.SheetLive do
             Share
           </button>
 
+          <div class="dropdown dropdown-end">
+            <div tabindex="0" role="button" class="btn btn-sm btn-ghost" title="Open an example sheet">
+              Examples
+            </div>
+            <ul
+              tabindex="0"
+              class="dropdown-content menu z-10 w-64 rounded-box bg-base-200 p-2 shadow"
+            >
+              <li :for={example <- @examples}>
+                <button type="button" phx-click="example" phx-value-id={example.id}>
+                  <span class="truncate">{example.title}</span>
+                  <span class="ml-auto shrink-0 opacity-40">{example.locale}</span>
+                </button>
+              </li>
+            </ul>
+          </div>
+
+          <label
+            class="btn btn-sm btn-ghost cursor-pointer"
+            title="Open a sheet you downloaded earlier (⌘O)"
+          >
+            Open
+            <input id="open-sheet" type="file" accept=".md,.markdown,.txt,text/plain" class="hidden" />
+          </label>
+
           <button
             type="button"
             phx-click="download"
@@ -459,6 +537,7 @@ defmodule LocalizePadWeb.SheetLive do
           this.persist(textarea)
           this.shortcuts(textarea)
           this.syncScroll(textarea)
+          this.openFile()
 
           this.handleEvent("download", ({filename, content}) => {
             this.save(filename, content, "text/markdown")
@@ -490,6 +569,28 @@ defmodule LocalizePadWeb.SheetLive do
             textarea.value = saved
             this.pushEvent("restore", {source: saved})
           }
+        },
+
+        // Reading the file here rather than uploading it keeps the promise the
+        // rest of the app makes: a sheet reaches the server as text the user
+        // could have typed, and never as a file sitting in a temporary
+        // directory somewhere.
+        openFile() {
+          // Queried from the document, not from `this.el`: the hook is on the
+          // form and the control lives in the header beside Share and
+          // Download, where it belongs for the reader.
+          const input = document.getElementById("open-sheet")
+          if (!input) return
+
+          input.addEventListener("change", async () => {
+            const file = input.files && input.files[0]
+            if (!file) return
+
+            this.pushEvent("open", {content: await file.text()})
+            // Clearing it means the same file can be opened twice running;
+            // without this the second change event never fires.
+            input.value = ""
+          })
         },
 
         // The coloured layer is a separate scroll box from the textarea over
@@ -533,6 +634,9 @@ defmodule LocalizePadWeb.SheetLive do
             } else if (meta && event.key === "\\") {
               event.preventDefault()
               this.insertReference(textarea)
+            } else if (meta && event.key === "o") {
+              event.preventDefault()
+              document.getElementById("open-sheet")?.click()
             } else if (event.key === "Escape") {
               this.pushEvent("dismiss", {})
             }

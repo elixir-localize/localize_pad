@@ -224,6 +224,36 @@ defmodule LocalizePad.TokenizerTest do
              ]
     end
 
+    test "adjacent numbers are left unplaced rather than guessed at" do
+      # `2026-07-03` scans as `[2026, -7, -3]` — the hyphens read as signs, not
+      # separators — so three numbers arrive with no text between them. Nothing
+      # can say where `-07` ends and `-03` begins, so none of them is placed.
+      #
+      # The earlier version asserted numbers were never adjacent and sliced past
+      # the end of the line when they were, which *raised* from a tokenizer that
+      # is documented never to fail.
+      assert spans("-1-2-3") == [{:number, :unplaced}, {:number, :unplaced}, {:number, :unplaced}]
+    end
+
+    test "no line can produce a span outside itself" do
+      for {source, locale} <- [
+            {"2026-07-03は平日", :ja},
+            {"-1-2-3-4-5", :en},
+            {"1-2-3", :en},
+            {"", :en},
+            {"-5 -3 apples", :en}
+          ] do
+        {:ok, tokens} = Tokenizer.tokenize(source, locale: locale)
+
+        for token <- tokens, is_integer(token.start) do
+          assert token.start >= 0
+
+          assert token.start + token.length <= byte_size(source),
+                 "#{inspect(source)} placed #{inspect(token.source)} out of range"
+        end
+      end
+    end
+
     test "a line of prose places its words too" do
       # `a` arrives as a keyword rather than a word — it is the CLDR
       # abbreviation for `year`. It is still placed, which is what matters

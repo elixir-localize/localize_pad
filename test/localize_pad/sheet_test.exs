@@ -244,6 +244,63 @@ defmodule LocalizePad.SheetTest do
     end
   end
 
+  describe "Markdown import" do
+    test "an export round-trips exactly" do
+      original = "# Trip\n\nBreakfast: 19 + 22\nhotel = 120\nhotel * 3\n// a note\nsum"
+      markdown = original |> Sheet.new(locale: :en) |> Sheet.to_markdown()
+
+      assert Sheet.from_markdown(markdown) == {:ok, original, :en}
+    end
+
+    test "importing and exporting again does not accumulate" do
+      # The exporter aligns each answer into a `//` column. Keeping those on
+      # the way in would mean the next export wrote `// 41   // 41`, and the
+      # one after that a third time.
+      original = "hotel = 120\nhotel * 3"
+
+      cycle = fn source ->
+        {:ok, back, locale} =
+          source |> Sheet.new(locale: :en) |> Sheet.to_markdown() |> Sheet.from_markdown()
+
+        {back, locale}
+      end
+
+      assert {once, :en} = cycle.(original)
+      assert {twice, :en} = cycle.(once)
+      assert once == original
+      assert twice == original
+    end
+
+    test "a comment somebody wrote survives" do
+      original = "19 + 22 // paid cash"
+      markdown = original |> Sheet.new(locale: :en) |> Sheet.to_markdown()
+
+      assert {:ok, ^original, :en} = Sheet.from_markdown(markdown)
+    end
+
+    test "a file with no fence is taken whole" do
+      assert Sheet.from_markdown("2 + 2\n3 * 3") == {:ok, "2 + 2\n3 * 3", nil}
+    end
+
+    test "a file naming no locale states none, rather than guessing one" do
+      # The caller keeps whatever locale it already had. Guessing would change
+      # what the numbers mean.
+      assert {:ok, _source, nil} = Sheet.from_markdown("19 + 22")
+    end
+
+    test "unreadable input is an error, never a crash" do
+      # Upload is untrusted: this is handed whatever file was picked.
+      assert Sheet.from_markdown("") == {:error, :empty}
+      assert Sheet.from_markdown("   \n  \n") == {:error, :empty}
+      assert Sheet.from_markdown(nil) == {:error, :empty}
+      assert Sheet.from_markdown(<<0, 1, 2, 255>>) != :crashed
+    end
+
+    test "a locale the file names but this app cannot validate is ignored" do
+      assert {:ok, "19 + 22", nil} = Sheet.from_markdown("Locale: `zz-junk`\n\n```\n19 + 22\n```")
+    end
+  end
+
   describe "the same sheet read in two locales" do
     # The point of the whole project: the locale decides how the text is
     # *read*, not merely how the answer is written. These two runs are the same
