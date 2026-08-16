@@ -919,11 +919,29 @@ defmodule LocalizePadWeb.SheetLive do
 
         // TEMPORARY, for a demo — delete with its server-side half. Ctrl rather
         // than ⌘ because macOS takes ⌘H before the browser sees it.
+        // TEMPORARY, for a demo — delete with its server-side half.
+        //
+        // Matched on `code` before `key`. Safari hands Ctrl+letter to the macOS
+        // text bindings and reports `key` as the control character it produces
+        // rather than the letter, so a `key`-only match works in Chrome and
+        // silently does nothing in Safari. `code` is the physical key and is
+        // the same in both.
+        //
+        // Shift is accepted as well as ignored: macOS claims Ctrl-H and Ctrl-U
+        // for delete-backward and delete-to-line-start, and claims no
+        // Ctrl-Shift-letter at all, so Ctrl-Shift-U is the combination to reach
+        // for if a browser swallows the plain one.
+        //
+        // Capture phase, so nothing downstream can stop it first.
         presentationShortcut() {
+          const by_code = {KeyH: "toggle_locale_control", KeyU: "toggle_authored"}
+          const by_key = {h: "toggle_locale_control", u: "toggle_authored"}
+
           this.onPresentationKey = (event) => {
             if (!event.ctrlKey || event.metaKey || event.altKey) return
 
-            const event_name = {h: "toggle_locale_control", u: "toggle_authored"}[event.key]
+            const key = typeof event.key === "string" ? event.key.toLowerCase() : ""
+            const event_name = by_code[event.code] || by_key[key]
 
             if (event_name) {
               event.preventDefault()
@@ -931,11 +949,11 @@ defmodule LocalizePadWeb.SheetLive do
             }
           }
 
-          document.addEventListener("keydown", this.onPresentationKey)
+          document.addEventListener("keydown", this.onPresentationKey, true)
         },
 
         destroyed() {
-          document.removeEventListener("keydown", this.onPresentationKey)
+          document.removeEventListener("keydown", this.onPresentationKey, true)
         },
 
         shortcuts(textarea) {
