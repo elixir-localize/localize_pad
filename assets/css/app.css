@@ -152,6 +152,22 @@
   height: var(--sheet-line-height);
 }
 
+/* The line an accountant draws under a column of figures before writing the
+   total beneath it. It marks where the entries stop and what they add up to
+   starts, which the margin otherwise leaves to the reader to work out.
+
+   Drawn as an inset shadow rather than a border on purpose. Every answer row
+   is exactly one line high and every column derives from that one value, so
+   a row that grew by the width of a border — or whose text shifted down by
+   it — would put this answer out of step with the line that produced it. A
+   shadow occupies no space at all.
+
+   The colour is mixed rather than set with `opacity`, which would fade the
+   answer along with its rule. */
+.sheet-answers > .sheet-rule {
+  box-shadow: inset 0 1px 0 0 color-mix(in oklab, currentColor 45%, transparent);
+}
+
 /* The editor is a transparent textarea laid over a coloured copy of its own
    text. Both boxes must agree byte for byte on metrics — font, size, line
    height, padding, wrapping — or the colours drift out from under the cursor.

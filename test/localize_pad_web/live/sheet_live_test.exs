@@ -192,6 +192,51 @@ defmodule LocalizePadWeb.SheetLiveTest do
     end
   end
 
+  describe "the rule over an aggregate" do
+    # The answer rows are the only thing carrying a line number, so the rows
+    # ruled off can be read straight out of the markup.
+    defp ruled_lines(html) do
+      ~r/phx-value-line="(\d+)"[^>]*sheet-rule/
+      |> Regex.scan(html)
+      |> Enum.map(fn [_whole, index] -> String.to_integer(index) end)
+    end
+
+    test "one rule opens a run, however many functions are in it", %{conn: conn} do
+      {:ok, live, _html} = live(conn, ~p"/")
+
+      # Three stripes would say the three answers were three separate things.
+      html = render_change(live, :edit, %{"source" => "10\n20\nsum\naverage\nmedian"})
+
+      assert ruled_lines(html) == [2]
+    end
+
+    test "and a blank inside the run does not start a second one", %{conn: conn} do
+      {:ok, live, _html} = live(conn, ~p"/")
+
+      html = render_change(live, :edit, %{"source" => "10\n20\nsum\n\naverage"})
+
+      assert ruled_lines(html) == [2]
+    end
+
+    test "every block gets its own", %{conn: conn} do
+      {:ok, live, _html} = live(conn, ~p"/")
+
+      html = render_change(live, :edit, %{"source" => "10\nsum\n# Travel\n20\nsum"})
+
+      assert ruled_lines(html) == [1, 4]
+    end
+
+    test "an aggregate with no answer is passed over, not ruled off", %{conn: conn} do
+      {:ok, live, _html} = live(conn, ~p"/")
+
+      # There is no total of a distance and a weight, so the rule belongs over
+      # the count, which is the first answer the run actually produces.
+      html = render_change(live, :edit, %{"source" => "3 meters\n100 kg\nsum\ncount"})
+
+      assert ruled_lines(html) == [3]
+    end
+  end
+
   describe "windows of one session" do
     # Two windows of a session mirror each other. The property that matters
     # more than the feature is that *only* they do: the topic is derived from a

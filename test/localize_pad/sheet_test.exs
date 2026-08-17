@@ -153,6 +153,28 @@ defmodule LocalizePad.SheetTest do
       assert answers("1\n2\n3\n4\nmedian") == ["1", "2", "3", "4", "2.5"]
     end
 
+    test "a minimum and a maximum are the ends of that same order" do
+      assert answers("30\n10\n20\nmin\nmax") == ["30", "10", "20", "10", "30"]
+    end
+
+    test "a count counts the entries" do
+      assert answers("19\n22\n1\ncount") == ["19", "22", "1", "3"]
+    end
+
+    test "and counts what the average divides by, so the two agree" do
+      # The date is no more part of the count than it is part of the sum.
+      # Counted, `sum / count` would answer 13.67 where the average says 20.5.
+      assert answers("19\nApril 12, 2026\n22\nsum\ncount\naverage") ==
+               ["19", "April 12, 2026", "22", "41", "2", "20.5"]
+    end
+
+    test "a count answers where the others refuse, because counting asks nothing" do
+      # There is no total of a distance and a weight and no middle one either,
+      # and the page still plainly has two entries on it.
+      assert answers("3 meters\n100 kg\nsum\nmedian\ncount") ==
+               ["3 meters", "100 kilograms", nil, nil, "2"]
+    end
+
     test "a quantity that will not add refuses the total rather than being skipped" do
       # Skipping it would answer `41` for a sheet whose middle line is a
       # distance, under a label reading `Total`. There is no total of a number
@@ -224,6 +246,13 @@ defmodule LocalizePad.SheetTest do
       # 50 cm is the smallest of the three however early it is written.
       assert answers("1 meter\n50 cm\n2 m\nmedian") ==
                ["1 meter", "50 centimeters", "2 meters", "1 meter"]
+    end
+
+    test "the ends of the order are converted too, not reported as written" do
+      # 50 cm is the smallest however it is spelled, and it is answered in the
+      # unit the sheet chose rather than the one that line happened to use.
+      assert answers("1 meter\n50 cm\n2 m\nmin\nmax") ==
+               ["1 meter", "50 centimeters", "2 meters", "0.5 meters", "2 meters"]
     end
 
     test "quantities of different kinds have no average" do

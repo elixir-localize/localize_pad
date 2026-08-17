@@ -78,6 +78,17 @@ defmodule LocalizePad.LanguagesTest do
       assert answer("10\n20\n30\n中央値", "ja") == "20"
     end
 
+    test "and it can count and find its ends in its own language too" do
+      assert answer("10\n20\n30\nanzahl", "de") == "3"
+      assert answer("10\n20\n30\nnombre", "fr") == "3"
+      assert answer("10\n20\n30\ncuenta", "es") == "3"
+      assert answer("10\n20\n30\n件数", "ja") == "3"
+
+      assert answer("10\n20\n30\nkleinster wert", "de") == "10"
+      assert answer("10\n20\n30\nmáximo", "es") == "30"
+      assert answer("10\n20\n30\n最小", "ja") == "10"
+    end
+
     test "and the average and the median are one letter apart in Spanish" do
       # `media` is the average and `mediana` is the median. Two words, two
       # answers, and nothing but the last three letters to tell them apart.

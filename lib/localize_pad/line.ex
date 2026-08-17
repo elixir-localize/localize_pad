@@ -12,8 +12,9 @@ defmodule LocalizePad.Line do
 
   * `:comment` — begins with `//`.
 
-  * `:aggregate` — `sum`, `average` or `median`, alone on a line. Summarises
-    every entry above it, back to the previous aggregate or heading.
+  * `:aggregate` — `sum`, `average`, `median`, `count`, `min` or `max`, alone
+    on a line. Summarises every entry above it, back to the previous aggregate
+    or heading.
 
   * `:declaration` — `name = expression`. Binds a name for the lines below.
 
@@ -25,7 +26,7 @@ defmodule LocalizePad.Line do
   file records it out of band. A sheet here is plain text first — it has to
   survive being copied into a chat window and pasted back — so the aggregate
   is a word you can type. `sum` on its own line is the marker, and `average`,
-  `mean` and `median` are the others.
+  `mean`, `median`, `count`, `min` and `max` are the others.
 
   Which words those are is the reader's business, not English's:
   `Durchschnitt` on a German sheet is the same line as `average` on an English

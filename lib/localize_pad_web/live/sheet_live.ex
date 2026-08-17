@@ -145,7 +145,7 @@ defmodule LocalizePadWeb.SheetLive do
 
   use LocalizePadWeb, :live_view
 
-  alias LocalizePad.{Examples, Highlight, Locales, Refusal, Share, Sheet, Timeline, Value}
+  alias LocalizePad.{Examples, Highlight, Line, Locales, Refusal, Share, Sheet, Timeline, Value}
 
   @sample """
   # A first sheet
@@ -401,8 +401,33 @@ defmodule LocalizePadWeb.SheetLive do
       )
     )
     |> assign(:share_payload, Share.encode(socket.assigns.source, socket.assigns.locale))
+    |> assign(:ruled, ruled(sheet))
     |> assign(:total, format_total(sheet, socket.assigns.locale))
     |> assign(:detail, detail_for(sheet, socket.assigns[:selected], socket.assigns.locale))
+  end
+
+  # Which answers get the rule drawn over them: the accountant's line under a
+  # column of figures, before the total is written beneath it.
+  #
+  # One per run, not one per aggregate, so `sum` / `average` / `median` read as
+  # one bracketed group rather than three stripes. Blank lines sit inside a run
+  # here exactly as they do in the block the run reports on — the two rules
+  # have to agree or the drawing would contradict the arithmetic.
+  #
+  # An aggregate with no answer is passed over rather than ruled off. A rule
+  # over an empty row delineates nothing, and where the sum refuses but the
+  # count does not, the line belongs over the answer that is actually there.
+  defp ruled(%Sheet{lines: lines}) do
+    {ruled, _drawn} =
+      Enum.reduce(lines, {MapSet.new(), false}, fn
+        %Line{kind: :aggregate, formatted: nil}, accumulated -> accumulated
+        %Line{kind: :aggregate} = line, {ruled, false} -> {MapSet.put(ruled, line.index), true}
+        %Line{kind: :aggregate}, accumulated -> accumulated
+        %Line{kind: :blank}, accumulated -> accumulated
+        _line, {ruled, _drawn} -> {ruled, false}
+      end)
+
+    ruled
   end
 
   defp detail_for(_sheet, nil, _locale), do: nil
@@ -665,7 +690,8 @@ defmodule LocalizePadWeb.SheetLive do
                 line.formatted && "cursor-pointer hover:opacity-70",
                 line.index == @selected && "font-semibold",
                 line.error && "opacity-40",
-                line.kind in [:heading, :comment] && "opacity-30"
+                line.kind in [:heading, :comment] && "opacity-30",
+                MapSet.member?(@ruled, line.index) && "sheet-rule"
               ]}
               title={
                 line.error &&

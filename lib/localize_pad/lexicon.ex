@@ -56,7 +56,7 @@ defmodule LocalizePad.Lexicon do
           | :of_reversed
           | :per_reversed
 
-  @type aggregate :: :sum | :average | :median
+  @type aggregate :: :sum | :average | :median | :count | :minimum | :maximum
 
   @type deictic ::
           :now | :today | :tomorrow | :yesterday | :day_after_tomorrow | :day_before_yesterday
@@ -246,31 +246,51 @@ defmodule LocalizePad.Lexicon do
   # Spanish is the reminder that these are near neighbours in every language:
   # `media` is the average and `mediana` is the median, one letter apart and
   # two different answers.
+  #
+  # `min` is also the abbreviation for a minute, so a line reading nothing but
+  # `min` answers the smallest entry above it rather than one minute. Only a
+  # line that is *entirely* the word is read this way — `5 min` is still five
+  # minutes — and nobody writes a bare `min` meaning a duration.
   @aggregates %{
     en: %{
       sum: ["sum", "subtotal", "total"],
       average: ["average", "avg", "mean"],
-      median: ["median"]
+      median: ["median"],
+      count: ["count"],
+      minimum: ["min", "minimum", "lowest", "smallest"],
+      maximum: ["max", "maximum", "highest", "largest"]
     },
     de: %{
       sum: ["summe", "zwischensumme", "gesamt", "gesamtsumme", "total"],
       average: ["durchschnitt", "mittelwert", "mittel"],
-      median: ["median", "zentralwert"]
+      median: ["median", "zentralwert"],
+      count: ["anzahl"],
+      minimum: ["min", "minimum", "kleinster wert"],
+      maximum: ["max", "maximum", "größter wert", "grösster wert"]
     },
     fr: %{
       sum: ["somme", "sous-total", "total"],
       average: ["moyenne"],
-      median: ["médiane", "mediane"]
+      median: ["médiane", "mediane"],
+      count: ["compte", "nombre"],
+      minimum: ["min", "minimum"],
+      maximum: ["max", "maximum"]
     },
     es: %{
       sum: ["suma", "subtotal", "total"],
       average: ["promedio", "media"],
-      median: ["mediana"]
+      median: ["mediana"],
+      count: ["cuenta", "recuento"],
+      minimum: ["min", "mínimo", "minimo"],
+      maximum: ["max", "máximo", "maximo"]
     },
     ja: %{
       sum: ["合計", "小計", "計"],
       average: ["平均", "平均値"],
-      median: ["中央値", "メジアン"]
+      median: ["中央値", "メジアン"],
+      count: ["件数", "個数", "カウント"],
+      minimum: ["最小", "最小値"],
+      maximum: ["最大", "最大値"]
     }
   }
 
@@ -285,7 +305,8 @@ defmodule LocalizePad.Lexicon do
 
   ### Returns
 
-  * `{:ok, function}` where function is `:sum`, `:average` or `:median`.
+  * `{:ok, function}` where function is `:sum`, `:average`, `:median`,
+    `:count`, `:minimum` or `:maximum`.
 
   * `:error` when the word names no function in this locale, which is what
     makes `somme` a calculation on a French sheet and prose on an English one.

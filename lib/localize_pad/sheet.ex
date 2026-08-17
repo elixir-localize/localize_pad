@@ -26,16 +26,22 @@ defmodule LocalizePad.Sheet do
   declaration names a value for later use, and counting `cost = 550` as an
   entry as well as every line that uses `cost` would double it.
 
-  A line reading `sum`, `average` or `median` does the same over the entries
-  above it, back to the previous such line or heading. Several of them may sit
-  one under the other, and each reports on the block the run as a whole
-  follows rather than on the line above it — `sum` then `average` answers for
-  the same entries twice, which is the point of writing both.
+  A line reading `sum`, `average`, `median`, `count`, `min` or `max` does the
+  same over the entries above it, back to the previous such line or heading.
+  Several of them may sit one under the other, and each reports on the block
+  the run as a whole follows rather than on the line above it — `sum` then
+  `average` answers for the same entries twice, which is the point of writing
+  both.
 
-  The three answer together or not at all. An average is a sum shared out and
-  a median is an ordering, so each needs what the sum needs: values of one
-  kind, converted into one unit or one currency. What the sum will not add,
-  the others will not average or order either.
+  Five of the six answer together or not at all. An average is a sum shared
+  out, and a median, a minimum and a maximum are orderings, so each needs what
+  the sum needs: values of one kind, converted into one unit or one currency.
+  What the sum will not add, the others will not average or order either.
+
+  `count` is the exception, because counting asks nothing of the values but
+  that they be there. A page of metres and kilograms has no total and no
+  middle, and still plainly has two entries on it. It counts what the others
+  use, so the sum shared out by the count is always the average.
 
   Three sheets have a total, and they are the three where one exists to be had:
 
@@ -610,6 +616,29 @@ defmodule LocalizePad.Sheet do
   defp combine(values, :median, locale, rates) do
     case ordered(values, locale, rates) do
       {:ok, sorted} -> middle(sorted, locale, rates)
+      :error -> nil
+    end
+  end
+
+  # The smallest and largest come out of the same ordering, and out of it
+  # already converted — the smallest of a metre and 50 cm is half a metre,
+  # written in the unit the sheet chose, exactly as the sum and the median
+  # are.
+  defp combine(values, :minimum, locale, rates), do: end_of(values, locale, rates, &List.first/1)
+  defp combine(values, :maximum, locale, rates), do: end_of(values, locale, rates, &List.last/1)
+
+  # Counting asks nothing of the values but that they be entries, so it
+  # answers where the others refuse: a page of metres and kilograms has no
+  # total and no middle, and still plainly has two things on it.
+  #
+  # What it counts is what the others use, which is what keeps the sum shared
+  # out by the count equal to the average. A date is not an entry here for the
+  # same reason it is not part of the total.
+  defp combine(values, :count, _locale, _rates), do: length(values)
+
+  defp end_of(values, locale, rates, pick) do
+    case ordered(values, locale, rates) do
+      {:ok, sorted} -> pick.(sorted)
       :error -> nil
     end
   end
