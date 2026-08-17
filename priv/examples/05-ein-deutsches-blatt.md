@@ -30,6 +30,40 @@ Locale: `de`
 jeden Montag
 jeden letzten Freitag
 
+# Fälle, ohne Wörterbuch
+
+// Die Ordnungszahlen stammen aus CLDRs
+// Regelsätzen, nicht aus einer Liste. Damit
+// kennt das Blatt das ganze Paradigma — `erste`,
+// `ersten`, `erster`, `erstem`, `erstes` —
+// obwohl keines dieser Wörter hier
+// aufgeschrieben wurde.
+jeden ersten Montag
+jeder erste Montag
+jedem ersten Montag
+
+// Dreimal dieselbe Antwort: der Fall ändert die
+// Endung, nicht das Ergebnis. Eine
+// handgeschriebene Liste hätte die Formen, an
+// die jemand gedacht hat.
+jeden zweiten Freitag
+jedem zweiten Freitag
+
+# Relative Tage
+
+// `heute` und `morgen` stehen in CLDRs Feldern
+// für relative Datumsangaben — und mit ihnen
+// `übermorgen` und `vorgestern`, die in einer
+// handgeschriebenen Liste fast immer fehlen.
+heute
+übermorgen
+vorgestern
+jetzt
+
+// Und sie rechnen wie jedes andere Datum.
+übermorgen + 3 Tage
+heute bis übermorgen
+
 # Werktage
 
 ist der 3. Juli 2026 ein Werktag

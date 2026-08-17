@@ -172,4 +172,46 @@ defmodule LocalizePad.LanguagesTest do
       assert Zones.resolve("Vereinigte Staaten", :de) == :error
     end
   end
+
+  describe "ordinals come from the locale's rule sets, so the paradigm comes with them" do
+    defp dates(source, locale) do
+      [line] = Sheet.new(source, locale: locale).lines
+
+      line.formatted
+    end
+
+    test "German reads an ordinal in any case it is written in" do
+      # Nominative, accusative and dative. The ending changes, the answer does
+      # not — and none of these forms is written down anywhere in the pad.
+      answer = dates("jeden ersten Montag", :de)
+
+      assert answer != nil
+      assert dates("jeder erste Montag", :de) == answer
+      assert dates("jedem ersten Montag", :de) == answer
+    end
+
+    test "and the same holds further up the ordinals" do
+      answer = dates("jeden zweiten Freitag", :de)
+
+      assert answer != nil
+      assert dates("jedem zweiten Freitag", :de) == answer
+      assert dates("jeder zweite Freitag", :de) == answer
+    end
+
+    test "French reads the singular and the plural alike" do
+      answer = dates("quatrième jeudi de novembre", :fr)
+
+      assert answer != nil
+      assert dates("quatrièmes jeudi de novembre", :fr) == answer
+    end
+
+    test "and treats `second` as the synonym for `deuxième` that it is" do
+      # This pair is the exception the rule sets cannot supply: `second` is a
+      # different word rather than a form of `deuxième`, so it is authored.
+      answer = dates("chaque deuxième mardi", :fr)
+
+      assert answer != nil
+      assert dates("chaque second mardi", :fr) == answer
+    end
+  end
 end
