@@ -246,10 +246,9 @@
 
    Longhands and the -webkit- prefix rather than the `text-decoration`
    shorthand, which Safari does not honour when it carries a style and a
-   colour — it paints a plain underline or nothing at all. The background tint
-   is the belt to that pair of braces: it needs no text-decoration support
-   whatsoever, and neither it nor the underline changes the metrics the
-   textarea above this layer is aligned against. */
+   colour — it paints a plain underline or nothing at all. The longhands do not
+   change the metrics the textarea above this layer is aligned against, which
+   any box property would. */
 .tok-authored {
   -webkit-text-decoration-line: underline;
   -webkit-text-decoration-style: wavy;
@@ -258,8 +257,6 @@
   text-decoration-style: wavy;
   text-decoration-color: var(--color-warning);
   text-underline-offset: 4px;
-  background-color: color-mix(in oklch, var(--color-warning) 18%, transparent);
-  border-radius: 2px;
 }
 
 .tok-number,

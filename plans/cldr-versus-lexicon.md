@@ -4,12 +4,12 @@ The thesis behind LocalizePad is that a locale can be added for a page of operat
 
 ## The answer
 
-Roughly **330 to 1**. CLDR supplies around fourteen thousand strings per locale; the pad authors about forty words and four translated sentences.
+Roughly **200 to 1**. CLDR supplies around fourteen thousand strings per locale; the pad authors about seventy words and four translated sentences.
 
 | | en | de | fr | es | ja |
 |---|---:|---:|---:|---:|---:|
 | CLDR strings supplied | 14,725 | 14,987 | 14,186 | 13,913 | 13,749 |
-| hand-authored input vocabulary | 46 | 47 | 41 | 37 | 39 |
+| hand-authored input vocabulary | 71 | 74 | 68 | 64 | 67 |
 | MF2 messages needing translation | 4 | 4 | 4 | 4 | 4 |
 
 ## What CLDR supplies, by area
@@ -31,7 +31,7 @@ Month names, weekday names, era markers, unit display names and their plurals, c
 
 ## What the pad authors
 
-`LocalizePad.Lexicon`, counted as distinct surface forms per locale.
+Counted as distinct surface forms per locale — what a reader can actually type, so a word appearing in two tables counts once.
 
 | table | en | de | fr | es | ja |
 |---|---:|---:|---:|---:|---:|
@@ -40,7 +40,14 @@ Month names, weekday names, era markers, unit display names and their plurals, c
 | preference targets — `preferred`, `local` | 3 | 7 | 7 | 6 | 3 |
 | usages — `height`, `weight`, `fluid`, `currency` | 9 | 8 | 8 | 7 | 6 |
 | totals — `sum`, `summe`, `somme`, `合計` | 3 | 5 | 3 | 3 | 3 |
-| **total** | **46** | **47** | **41** | **37** | **39** |
+| finance — `monthly`, `repayment`, `interest`, `over` | 19 | 19 | 19 | 19 | 19 |
+| uncertainty and eras — `circa`, `about`, `bce` | 6 | 6 | 6 | 6 | 6 |
+| sales tax — `vat`, `gst`, `sales tax` | 3 | 3 | 3 | 3 | 3 |
+| **total, distinct** | **71** | **74** | **68** | **64** | **67** |
+
+The last three tables are English only, and are recognised in every locale for the plain reason that nobody has translated them. A German reader writes `monatliche Rate` and gets nothing; they write `monthly repayment` and it works. That is a gap rather than a feature, and counting those words against every locale is the honest way to show it — the alternative flatters the figure by pretending the vocabulary does not exist.
+
+An earlier version of this document counted the first five tables and stopped, which put English at 46 and the ratio at 330:1. The other three are input vocabulary by exactly the same test — a reader types `circa 1750` and the pad reads it — so leaving them out was measuring the lexicon module rather than the lexicon.
 
 The deictics table is gone entirely — `today`, `tomorrow`, `yesterday` and `now` are read from CLDR's relative day and second fields. The spelled ordinals are gone too, generated from the locale's RBNF rule sets; German recurrence fell from 29 entries to 14 without a reader losing a single form they could type before.
 
@@ -74,7 +81,7 @@ Every row here was authored once and is not any more. The counts are what each l
 | relative day names | 4 | 6 | 6 | 6 | 6 |
 | day-of-week phrases | 2 | 1 | 1 | 1 | 2 |
 
-The authored vocabulary fell by about a fifth, and German by more than a quarter. That is the less interesting half. What changed more is coverage.
+The five lexicon tables fell by about a fifth, and German by more than a quarter. That is the less interesting half. What changed more is coverage.
 
 German ordinals went from 18 written forms to **28** recognised, because the RBNF sets carry the whole case paradigm and a hand list carried what somebody thought of: `erstem` and `erstes` are understood now and were not. French relative days gained `après-demain` and `avant-hier`, German `übermorgen` and `vorgestern` — words the table never had, which now resolve to the days they name. Zone names work in the reader's language, so `Tokio`, `Londres`, `Nueva York` and `東京` all find their clock. And currency conversion accepts any of five hundred–odd names per locale without a word of it being written down.
 
@@ -90,7 +97,11 @@ German ordinals went from 18 written forms to **28** recognised, because the RBN
 
 * **Preference and usage targets** — `preferred`, `local`, `height`, `weight`, `currency`. These name what the reader wants the answer expressed *in*, which is a question about this application rather than a fact about the language.
 
-* **Twenty everyday English words that are also units** (`cup`, `stone`, `point`, `night`) and three tax names (`vat`, `gst`, `sales tax`). Judgements about English prose, which is why CLDR does not have them and should not.
+* **The finance vocabulary** — `monthly`, `repayment`, `interest`, `over`, `at`, `total`, `compounding`. These name a calculation rather than a quantity, and CLDR models quantities. Nineteen forms, English only, and the largest single block of authored words in the pad.
+
+* **`circa`, `about`, `approximately`, `around`, `bce`, `bc`.** CLDR names the eras — `v. Chr.` is in the German data and the pad renders with it — but nothing in CLDR says which words a reader *writes* to mark a date as imprecise.
+
+* **Twenty everyday English words that are also units** (`cup`, `stone`, `point`, `night`) and three tax names (`vat`, `gst`, `sales tax`). Judgements about English prose, which is why CLDR does not have them and should not. The everyday words are a filter rather than vocabulary — they are CLDR unit names the pad declines to read as units — so they are not counted above.
 
 * **28 airport codes.** Genuinely not CLDR data.
 
@@ -102,6 +113,8 @@ German ordinals went from 18 written forms to **28** recognised, because the RBN
 
 ## Method
 
-The CLDR counts walk each locale's loaded data and count distinct binaries under the named key. The authored counts parse `lib/localize_pad/lexicon.ex` as an Elixir AST and count distinct string literals under each locale key, which is why they cannot be fooled by the nesting that an earlier regex-based count got wrong. The derived counts are taken at runtime from the functions that build them, so they measure what a reader can actually type rather than what the source suggests.
+The CLDR counts walk each locale's loaded data and count distinct binaries under the named key. The authored counts parse `lib/localize_pad/lexicon.ex` as an Elixir AST and count distinct string literals under each locale key, which is why they cannot be fooled by the nesting that an earlier regex-based count got wrong; the finance, uncertainty and tax rows are read from the three modules that own that vocabulary, since it does not live in the lexicon tables. The derived counts are taken at runtime from the functions that build them, so they measure what a reader can actually type rather than what the source suggests.
+
+Every authored figure is a count of *distinct* forms, so a word in two tables is counted once — `total` is both a totalling word and a finance qualifier, and `each` is both a division word and a recurrence word. The per-table rows therefore sum to slightly more than the total.
 
 All are reproducible against the CLDR version the locale files were downloaded for; the figures above are CLDR 48.2.2 via `localize` 1.2.0.
