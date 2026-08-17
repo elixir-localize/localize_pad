@@ -743,16 +743,57 @@ defmodule LocalizePadWeb.SheetLive do
       const KEY = "localize_pad.sheet"
       const FRAGMENT = "#s="
 
+      // Safari *throws* on `window.localStorage` when the reader blocks cookies
+      // or site data, where other browsers hand back null. Unguarded, that took
+      // out far more than storage: `mounted` died on its first line and every
+      // later step — the keyboard shortcuts, the file open, and the scroll sync
+      // the two columns depend on — never wired up. A browser setting nobody
+      // would connect to it left the editor visibly broken.
+      //
+      // Losing the saved sheet is the honest cost of that setting. Losing the
+      // editor is not.
+      const storage = {
+        get(key) {
+          try {
+            return window.localStorage.getItem(key)
+          } catch (error) {
+            return null
+          }
+        },
+
+        set(key, value) {
+          try {
+            window.localStorage.setItem(key, value)
+          } catch (error) {
+            // Nothing to do: the sheet is still on screen and still evaluating.
+          }
+        }
+      }
+
       export default {
         mounted() {
           const textarea = this.el.querySelector("textarea[name=source]")
 
-          this.restore(textarea)
-          this.persist(textarea)
-          this.shortcuts(textarea)
-          this.presentationShortcut()
-          this.syncScroll(textarea)
-          this.openFile()
+          // Wired one at a time and independently. These are separate promises
+          // to the reader — the sheet persists, the columns scroll together,
+          // ⌘S saves — and one of them failing must not silently cost the
+          // others, which is exactly what a single straight-line `mounted` did.
+          const wiring = [
+            () => this.restore(textarea),
+            () => this.persist(textarea),
+            () => this.shortcuts(textarea),
+            () => this.presentationShortcut(),
+            () => this.syncScroll(textarea),
+            () => this.openFile()
+          ]
+
+          for (const wire of wiring) {
+            try {
+              wire()
+            } catch (error) {
+              console.error("LocalizePad could not wire the editor:", error)
+            }
+          }
 
           // A sibling window changed the sheet.
           this.handleEvent("remote", ({source}) => {
@@ -765,7 +806,7 @@ defmodule LocalizePadWeb.SheetLive do
             if (textarea.value === source) return
 
             textarea.value = source
-            window.localStorage.setItem(KEY, source)
+            storage.set(KEY, source)
           })
 
           this.handleEvent("download", ({filename, content}) => {
@@ -815,7 +856,7 @@ defmodule LocalizePadWeb.SheetLive do
             return
           }
 
-          const saved = window.localStorage.getItem(KEY)
+          const saved = storage.get(KEY)
 
           // Only replace the server's sample when there is something to
           // replace it with. A first visit should see a sheet, not a blank.
@@ -913,7 +954,7 @@ defmodule LocalizePadWeb.SheetLive do
         // immediately after typing does not lose the last keystrokes.
         persist(textarea) {
           this.el.addEventListener("input", () => {
-            window.localStorage.setItem(KEY, textarea.value)
+            storage.set(KEY, textarea.value)
           })
         },
 
