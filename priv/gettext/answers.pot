@@ -11,17 +11,17 @@
 msgid ""
 msgstr ""
 
-#: lib/localize_pad/value.ex:115
+#: lib/localize_pad/value.ex:146
 #, elixir-autogen, icu-format
 msgid "no"
 msgstr ""
 
-#: lib/localize_pad/value.ex:114
+#: lib/localize_pad/value.ex:145
 #, elixir-autogen, icu-format
 msgid "yes"
 msgstr ""
 
-#: lib/localize_pad/value.ex:283
+#: lib/localize_pad/value.ex:314
 #, elixir-autogen, icu-format
 msgid "{$count} dates · {$listed} …"
 msgstr ""
@@ -29,4 +29,19 @@ msgstr ""
 #: lib/localize_pad/refusal.ex:48
 #, elixir-autogen, icu-format
 msgid "no rate declared — add {$example}"
+msgstr ""
+
+#: lib/localize_pad/refusal.ex:66
+#, elixir-autogen, icu-format
+msgid "no {$name} there that day"
+msgstr ""
+
+#: lib/localize_pad/refusal.ex:55
+#, elixir-autogen, icu-format
+msgid "which place? — try {$example}"
+msgstr ""
+
+#: lib/localize_pad/refusal.ex:59
+#, elixir-autogen, icu-format
+msgid "where is {$name}?"
 msgstr ""

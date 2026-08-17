@@ -145,7 +145,18 @@ defmodule LocalizePadWeb.SheetLive do
 
   use LocalizePadWeb, :live_view
 
-  alias LocalizePad.{Examples, Highlight, Line, Locales, Refusal, Share, Sheet, Timeline, Value}
+  alias LocalizePad.{
+    Almanac,
+    Examples,
+    Highlight,
+    Line,
+    Locales,
+    Refusal,
+    Share,
+    Sheet,
+    Timeline,
+    Value
+  }
 
   @sample """
   # A first sheet
@@ -183,6 +194,7 @@ defmodule LocalizePadWeb.SheetLive do
      |> assign(:locale_options, Locales.suggestions())
      |> assign(:locale_error, nil)
      |> assign(:prefer_local, false)
+     |> assign(:zone, nil)
      |> assign(:show_locale, true)
      |> assign(:show_authored, false)
      |> assign(:examples, Examples.all())
@@ -193,6 +205,14 @@ defmodule LocalizePadWeb.SheetLive do
   @impl Phoenix.LiveView
   def handle_event("edit", %{"source" => source}, socket) do
     {:noreply, socket |> assign(:source, source) |> recalculate() |> publish()}
+  end
+
+  # Sent by the storage hook on mount. Untrusted like anything from a client,
+  # so a name the almanac cannot place is dropped rather than stored: an
+  # unplaceable zone would refuse every sunrise line with a message about a
+  # place the reader never typed.
+  def handle_event("zone", %{"zone" => zone}, socket) when is_binary(zone) do
+    {:noreply, socket |> assign(:zone, placeable(zone)) |> recalculate()}
   end
 
   # Sent by the storage hook on mount when the browser has a sheet saved.
@@ -388,7 +408,8 @@ defmodule LocalizePadWeb.SheetLive do
     sheet =
       Sheet.new(socket.assigns.source,
         locale: socket.assigns.locale,
-        prefer_local: socket.assigns.prefer_local
+        prefer_local: socket.assigns.prefer_local,
+        zone: socket.assigns.zone
       )
 
     socket
@@ -404,6 +425,13 @@ defmodule LocalizePadWeb.SheetLive do
     |> assign(:ruled, ruled(sheet))
     |> assign(:total, format_total(sheet, socket.assigns.locale))
     |> assign(:detail, detail_for(sheet, socket.assigns[:selected], socket.assigns.locale))
+  end
+
+  defp placeable(zone) do
+    case Almanac.coordinates(zone) do
+      {:ok, _point} -> zone
+      :error -> nil
+    end
   end
 
   # Which answers get the rule drawn over them: the accountant's line under a
@@ -798,6 +826,17 @@ defmodule LocalizePadWeb.SheetLive do
       }
 
       export default {
+        // Where the reader is, which is where `sunrise` means. No request
+        // header carries a timezone, and the browser has known its own since
+        // `Intl` existed — so it is asked once, here, rather than guessed at
+        // from the locale. A reader who declines to say gets a line that asks
+        // for a place rather than an answer for a city this app chose.
+        reportZone() {
+          const zone = Intl.DateTimeFormat().resolvedOptions().timeZone
+
+          if (zone) this.pushEvent("zone", {zone: zone})
+        },
+
         mounted() {
           const textarea = this.el.querySelector("textarea[name=source]")
 
@@ -806,6 +845,7 @@ defmodule LocalizePadWeb.SheetLive do
           // ⌘S saves — and one of them failing must not silently cost the
           // others, which is exactly what a single straight-line `mounted` did.
           const wiring = [
+            () => this.reportZone(),
             () => this.restore(textarea),
             () => this.persist(textarea),
             () => this.shortcuts(textarea),

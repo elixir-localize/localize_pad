@@ -50,7 +50,7 @@ defmodule LocalizePad.Parser do
 
   """
 
-  alias LocalizePad.{Finance, Inversion, Token}
+  alias LocalizePad.{Almanac, Finance, Inversion, Token}
   alias LocalizePad.Temporal.{Recurrence, Uncertain, Workdays}
 
   # {left, right} binding powers. Right < left makes an operator
@@ -170,7 +170,7 @@ defmodule LocalizePad.Parser do
         {:ok, node}
 
       :error ->
-        phrase(tokens, variables, Keyword.take(options, [:locale, :reference_date]))
+        phrase(tokens, variables, Keyword.take(options, [:locale, :reference_date, :zone]))
     end
   end
 
@@ -180,7 +180,11 @@ defmodule LocalizePad.Parser do
     with :error <- Inversion.match(tokens, options),
          :error <- Workdays.match(tokens, options),
          :error <- Uncertain.match(tokens),
-         :error <- Recurrence.match(tokens, options) do
+         :error <- Recurrence.match(tokens, options),
+         # Last, so that a line which is a recurrence *and* names an event —
+         # `sunrise every Monday` — keeps the reading it already had rather
+         # than quietly losing its `every`.
+         :error <- Almanac.match(tokens, options) do
       parse_expression_tokens(tokens, variables)
     else
       {:ok, node} -> {:ok, node}

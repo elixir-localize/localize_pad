@@ -41,7 +41,7 @@ defmodule LocalizePad.Lexicon do
 
   """
 
-  alias LocalizePad.{Finance, Locales, SalesTax}
+  alias LocalizePad.{Almanac, Finance, Locales, SalesTax}
   alias LocalizePad.Temporal.Uncertain
 
   @type role ::
@@ -575,6 +575,7 @@ defmodule LocalizePad.Lexicon do
       # English only, as those modules are — `circa`, `monthly repayment` and
       # `VAT` are recognised in any locale because nothing has translated them
       # yet, and the underline should say so rather than flatter the count.
+      Almanac.authored(),
       Finance.authored(),
       SalesTax.authored(),
       Uncertain.authored()

@@ -78,10 +78,11 @@ defmodule LocalizePad.Sheet do
   @type t :: %__MODULE__{
           locale: Locales.tag(),
           prefer_local: boolean(),
+          zone: String.t() | nil,
           lines: [Line.t()]
         }
 
-  defstruct locale: :en, prefer_local: false, lines: []
+  defstruct locale: :en, prefer_local: false, zone: nil, lines: []
 
   @doc """
   Builds and evaluates a sheet from its source text.
@@ -99,6 +100,11 @@ defmodule LocalizePad.Sheet do
     re-reads the sheet, which is the point: `1.234,5` is a different number in
     `:de` than in `:en`.
 
+  * `:zone` - the reader's own IANA time zone, which is where `sunrise` is
+    asked about when the line names no place. Defaults to `nil`, and a line
+    that needs a place then says so rather than being answered for one this
+    application picked. See `LocalizePad.Almanac`.
+
   ### Returns
 
   * A `t:LocalizePad.Sheet.t/0` with every line evaluated.
@@ -115,12 +121,13 @@ defmodule LocalizePad.Sheet do
     locale = options |> Keyword.get_lazy(:locale, &Localize.get_locale/0) |> resolve_locale()
 
     prefer_local = Keyword.get(options, :prefer_local, false)
+    zone = Keyword.get(options, :zone)
 
     source
     |> String.split("\n")
     |> Enum.with_index()
     |> Enum.map(fn {text, index} -> Line.classify(index, text, locale) end)
-    |> then(&%__MODULE__{locale: locale, prefer_local: prefer_local, lines: &1})
+    |> then(&%__MODULE__{locale: locale, prefer_local: prefer_local, zone: zone, lines: &1})
     |> evaluate()
   end
 
@@ -145,6 +152,7 @@ defmodule LocalizePad.Sheet do
       declared_at: %{},
       locale: sheet.locale,
       prefer_local: sheet.prefer_local,
+      zone: sheet.zone,
       lines: []
     }
 

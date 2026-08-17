@@ -48,6 +48,24 @@ defmodule LocalizePad.Refusal do
     with_locale(options, fn -> ~t"no rate declared — add #{example = name <> " = 20%"}" end)
   end
 
+  # The reader's own zone comes from the browser, so this is what a line asking
+  # for sunrise says before the page has connected, or where the browser will
+  # not say where it is. Naming a place is the fix either way.
+  def message({:no_location, event}, options) when is_atom(event) do
+    with_locale(options, fn -> ~t"which place? — try #{example = "#{event} in Sydney"}" end)
+  end
+
+  def message({:unknown_place, place}, options) when is_binary(place) do
+    with_locale(options, fn -> ~t"where is #{name = place}?" end)
+  end
+
+  # High latitudes, in season. Not a mistake to correct — the sun really does
+  # not rise — so the message says which event did not happen rather than
+  # suggesting a repair.
+  def message({:no_event, event}, options) when is_atom(event) do
+    with_locale(options, fn -> ~t"no #{name = to_string(event)} there that day" end)
+  end
+
   def message(_reason, _options), do: nil
 
   defp with_locale(options, fun) do

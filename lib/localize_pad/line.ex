@@ -262,7 +262,9 @@ defmodule LocalizePad.Line do
     variables = Map.fetch!(context, :variables)
     answers = Map.fetch!(context, :answers)
 
-    with {:ok, ast} <- Parser.parse(tokens, variables: Map.keys(variables), locale: locale),
+    options = [variables: Map.keys(variables), locale: locale, zone: Map.get(context, :zone)]
+
+    with {:ok, ast} <- Parser.parse(tokens, options),
          {:ok, resolved} <- resolve_line_references(ast, answers),
          {:ok, value} <- Evaluator.eval(resolved, variables) do
       {:ok, value, ast}
