@@ -29,7 +29,7 @@ defmodule LocalizePad.ExamplesTest do
 
         failures =
           sheet.lines
-          |> Enum.filter(&(&1.error && not environmental?(&1.error)))
+          |> Enum.filter(&(&1.error && not tolerated?(&1.error)))
           |> Enum.map(&"  line #{&1.index + 1}: #{&1.source} → #{inspect(&1.error)}")
 
         assert failures == [],
@@ -40,9 +40,21 @@ defmodule LocalizePad.ExamplesTest do
     # A currency conversion is a well-formed line that cannot answer without
     # exchange rates, and the suite configures no app id — deliberately, since
     # a test that reaches the network is a test that fails when the network
-    # does. Only this one reason is tolerated: anything else is a broken line.
-    defp environmental?({:no_exchange_rate, _from, _to}), do: true
-    defp environmental?(_reason), do: false
+    # does.
+    defp tolerated?({:no_exchange_rate, _from, _to}), do: true
+
+    # `sunrise` with no place named is answered where the reader is, which the
+    # browser reports and a test suite has not got. The same shape as the
+    # rates: the running application supplies the fact and this does not.
+    defp tolerated?({:no_location, _event}), do: true
+
+    # The sun really does not rise over Svalbard in December. That refusal is
+    # what `08-the-sky` demonstrates on the line carrying it, so it is an
+    # example working rather than an example broken.
+    defp tolerated?({:no_event, _event}), do: true
+
+    # Anything else is a broken line.
+    defp tolerated?(_reason), do: false
 
     test "every example actually computes something" do
       # A pad of nothing but prose would pass the test above and demonstrate
