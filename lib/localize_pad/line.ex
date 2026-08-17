@@ -12,19 +12,24 @@ defmodule LocalizePad.Line do
 
   * `:comment` — begins with `//`.
 
-  * `:subtotal` — the word `sum`, alone on a line. Adds up every entry above
-    it, back to the previous subtotal or heading.
+  * `:aggregate` — `sum`, `average` or `median`, alone on a line. Summarises
+    every entry above it, back to the previous aggregate or heading.
 
   * `:declaration` — `name = expression`. Binds a name for the lines below.
 
   * `:expression` — everything else, including a line carrying a label.
 
-  ## Subtotals are typed, not clicked
+  ## Aggregates are typed, not clicked
 
   In Soulver a subtotal is made by a keystroke on an empty line, and the sheet
   file records it out of band. A sheet here is plain text first — it has to
-  survive being copied into a chat window and pasted back — so the subtotal is
-  a word you can type. `sum` on its own line is the marker.
+  survive being copied into a chat window and pasted back — so the aggregate
+  is a word you can type. `sum` on its own line is the marker, and `average`,
+  `mean` and `median` are the others.
+
+  Which words those are is the reader's business, not English's:
+  `Durchschnitt` on a German sheet is the same line as `average` on an English
+  one. `LocalizePad.Lexicon.aggregate/2` holds the vocabulary.
 
   ## Labels
 
@@ -37,7 +42,7 @@ defmodule LocalizePad.Line do
 
   alias LocalizePad.{Evaluator, Lexicon, Locales, Parser, Telemetry, Token, Tokenizer, Value}
 
-  @type kind :: :blank | :heading | :comment | :subtotal | :declaration | :expression
+  @type kind :: :blank | :heading | :comment | :aggregate | :declaration | :expression
 
   @type t :: %__MODULE__{
           index: non_neg_integer(),
@@ -45,6 +50,7 @@ defmodule LocalizePad.Line do
           kind: kind(),
           label: String.t() | nil,
           name: String.t() | nil,
+          aggregate: Lexicon.aggregate() | nil,
           expression: String.t() | nil,
           value: Evaluator.value() | nil,
           formatted: String.t() | nil,
@@ -58,6 +64,7 @@ defmodule LocalizePad.Line do
     :kind,
     :label,
     :name,
+    :aggregate,
     :expression,
     :value,
     :formatted,
@@ -86,8 +93,8 @@ defmodule LocalizePad.Line do
   Classifies a line of source text.
 
   Classification is purely syntactic — it does not evaluate anything. The
-  resulting line has its `:kind`, and where applicable the `:label`, `:name`
-  and `:expression` it was split into.
+  resulting line has its `:kind`, and where applicable the `:label`, `:name`,
+  `:aggregate` and `:expression` it was split into.
 
   ### Arguments
 
@@ -112,6 +119,10 @@ defmodule LocalizePad.Line do
       iex> {line.kind, line.label, line.expression}
       {:expression, "Breakfast", "19 + 22"}
 
+      iex> line = LocalizePad.Line.classify(0, "median")
+      iex> {line.kind, line.aggregate}
+      {:aggregate, :median}
+
   """
   @spec classify(non_neg_integer(), String.t(), Locales.locale()) :: t()
   def classify(index, source, locale \\ :en) when is_integer(index) and is_binary(source) do
@@ -128,8 +139,8 @@ defmodule LocalizePad.Line do
       body == "" ->
         %{line | kind: :blank}
 
-      Lexicon.subtotal?(body, locale) ->
-        %{line | kind: :subtotal}
+      function = aggregate_function(body, locale) ->
+        %{line | kind: :aggregate, aggregate: function}
 
       captures = Regex.run(@declaration, body) ->
         [_whole, name, expression] = captures
@@ -167,8 +178,8 @@ defmodule LocalizePad.Line do
     line
   end
 
-  def evaluate(%__MODULE__{kind: :subtotal} = line, _context) do
-    # Subtotals are filled in by the sheet, which is the only thing that knows
+  def evaluate(%__MODULE__{kind: :aggregate} = line, _context) do
+    # Aggregates are filled in by the sheet, which is the only thing that knows
     # what range they cover.
     line
   end
@@ -347,6 +358,15 @@ defmodule LocalizePad.Line do
   defp references({:line_ref, _line} = node), do: [node]
   defp references({:variable, _name} = node), do: [node]
   defp references(_node), do: []
+
+  # `nil` rather than `:error`, so the classifying `cond` can bind the function
+  # and test it in one clause, the way it does with a regex's captures.
+  defp aggregate_function(body, locale) do
+    case Lexicon.aggregate(body, locale) do
+      {:ok, function} -> function
+      :error -> nil
+    end
+  end
 
   defp normalize_name(name) do
     name |> String.split() |> Enum.join(" ")

@@ -56,6 +56,8 @@ defmodule LocalizePad.Lexicon do
           | :of_reversed
           | :per_reversed
 
+  @type aggregate :: :sum | :average | :median
+
   @type deictic ::
           :now | :today | :tomorrow | :yesterday | :day_after_tomorrow | :day_before_yesterday
 
@@ -231,23 +233,49 @@ defmodule LocalizePad.Lexicon do
     }
   }
 
-  # The word that totals a sheet. Soulver uses a keystroke; a pad that has to
-  # survive being pasted into a chat window needs a word you can type — and it
-  # has to be a word in the reader's language, or a German sheet cannot add
-  # itself up.
+  # The words that summarise the entries above them. Soulver uses a keystroke
+  # for a subtotal; a pad that has to survive being pasted into a chat window
+  # needs a word you can type — and it has to be a word in the reader's
+  # language, or a German sheet cannot add itself up.
   #
-  # `total` appears in more than one list because more than one language
-  # borrowed it.
-  @subtotals %{
-    en: ["sum", "subtotal", "total"],
-    de: ["summe", "zwischensumme", "gesamt", "gesamtsumme", "total"],
-    fr: ["somme", "sous-total", "total"],
-    es: ["suma", "subtotal", "total"],
-    ja: ["合計", "小計", "計"]
+  # `total` appears in more than one language because more than one language
+  # borrowed it. `mean` and `average` are the same function under two names,
+  # which is why the table maps a function to its surface forms rather than the
+  # other way round.
+  #
+  # Spanish is the reminder that these are near neighbours in every language:
+  # `media` is the average and `mediana` is the median, one letter apart and
+  # two different answers.
+  @aggregates %{
+    en: %{
+      sum: ["sum", "subtotal", "total"],
+      average: ["average", "avg", "mean"],
+      median: ["median"]
+    },
+    de: %{
+      sum: ["summe", "zwischensumme", "gesamt", "gesamtsumme", "total"],
+      average: ["durchschnitt", "mittelwert", "mittel"],
+      median: ["median", "zentralwert"]
+    },
+    fr: %{
+      sum: ["somme", "sous-total", "total"],
+      average: ["moyenne"],
+      median: ["médiane", "mediane"]
+    },
+    es: %{
+      sum: ["suma", "subtotal", "total"],
+      average: ["promedio", "media"],
+      median: ["mediana"]
+    },
+    ja: %{
+      sum: ["合計", "小計", "計"],
+      average: ["平均", "平均値"],
+      median: ["中央値", "メジアン"]
+    }
   }
 
   @doc """
-  Whether a word, alone on a line, totals the entries above it.
+  The function a word names, when that word is alone on a line.
 
   ### Arguments
 
@@ -257,23 +285,35 @@ defmodule LocalizePad.Lexicon do
 
   ### Returns
 
-  * `true` or `false`.
+  * `{:ok, function}` where function is `:sum`, `:average` or `:median`.
+
+  * `:error` when the word names no function in this locale, which is what
+    makes `somme` a calculation on a French sheet and prose on an English one.
 
   ### Examples
 
-      iex> LocalizePad.Lexicon.subtotal?("sum", :en)
-      true
+      iex> LocalizePad.Lexicon.aggregate("sum", :en)
+      {:ok, :sum}
 
-      iex> LocalizePad.Lexicon.subtotal?("Summe", :de)
-      true
+      iex> LocalizePad.Lexicon.aggregate("Mean", :en)
+      {:ok, :average}
 
-      iex> LocalizePad.Lexicon.subtotal?("breakfast", :en)
-      false
+      iex> LocalizePad.Lexicon.aggregate("Durchschnitt", :de)
+      {:ok, :average}
+
+      iex> LocalizePad.Lexicon.aggregate("breakfast", :en)
+      :error
 
   """
-  @spec subtotal?(String.t(), Locales.locale()) :: boolean()
-  def subtotal?(word, locale \\ :en) when is_binary(word) do
-    String.downcase(word) in Map.get(@subtotals, language(locale), @subtotals.en)
+  @spec aggregate(String.t(), Locales.locale()) :: {:ok, aggregate()} | :error
+  def aggregate(word, locale \\ :en) when is_binary(word) do
+    word = String.downcase(word)
+
+    @aggregates
+    |> Map.get(language(locale), @aggregates.en)
+    |> Enum.find_value(:error, fn {function, words} ->
+      if word in words, do: {:ok, function}
+    end)
   end
 
   # Words that name the reader's own units as a conversion target: `42 km in
@@ -507,7 +547,7 @@ defmodule LocalizePad.Lexicon do
       recurrence.what,
       List.flatten(recurrence.day_of_week),
       Map.keys(recurrence.ordinals),
-      Map.get(@subtotals, language, @subtotals.en),
+      @aggregates |> Map.get(language, @aggregates.en) |> Map.values() |> List.flatten(),
       Map.get(@preferences, language, @preferences.en),
       @usages |> Map.get(language, @usages.en) |> Map.keys(),
       # Grammar this application wrote that does not live in these five tables.

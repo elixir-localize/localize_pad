@@ -66,6 +66,25 @@ defmodule LocalizePad.LanguagesTest do
       assert answer("19\n22\nsous-total", "fr") == "41"
     end
 
+    test "and it can take an average or a median in its own language" do
+      assert answer("10\n20\n30\ndurchschnitt", "de") == "20"
+      assert answer("10\n20\n30\nmoyenne", "fr") == "20"
+      assert answer("10\n20\n30\npromedio", "es") == "20"
+      assert answer("10\n20\n30\n平均", "ja") == "20"
+
+      assert answer("10\n20\n30\nzentralwert", "de") == "20"
+      assert answer("10\n20\n30\nmédiane", "fr") == "20"
+      assert answer("10\n20\n30\nmediana", "es") == "20"
+      assert answer("10\n20\n30\n中央値", "ja") == "20"
+    end
+
+    test "and the average and the median are one letter apart in Spanish" do
+      # `media` is the average and `mediana` is the median. Two words, two
+      # answers, and nothing but the last three letters to tell them apart.
+      assert answer("10\n20\n60\nmedia", "es") == "30"
+      assert answer("10\n20\n60\nmediana", "es") == "20"
+    end
+
     test "and a word that totals in one language is prose in another" do
       # `somme` is French. On an English sheet it is just a word, and the line
       # above it must not be totalled by accident.

@@ -154,6 +154,7 @@ defmodule LocalizePadWeb.SheetLive do
   hotel = 120
   hotel * 3 nights
   sum
+  average
 
   // Anything after two slashes is ignored
   3 meters to feet

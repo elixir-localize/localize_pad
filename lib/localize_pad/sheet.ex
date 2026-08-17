@@ -26,6 +26,17 @@ defmodule LocalizePad.Sheet do
   declaration names a value for later use, and counting `cost = 550` as an
   entry as well as every line that uses `cost` would double it.
 
+  A line reading `sum`, `average` or `median` does the same over the entries
+  above it, back to the previous such line or heading. Several of them may sit
+  one under the other, and each reports on the block the run as a whole
+  follows rather than on the line above it — `sum` then `average` answers for
+  the same entries twice, which is the point of writing both.
+
+  The three answer together or not at all. An average is a sum shared out and
+  a median is an ordering, so each needs what the sum needs: values of one
+  kind, converted into one unit or one currency. What the sum will not add,
+  the others will not average or order either.
+
   Three sheets have a total, and they are the three where one exists to be had:
 
   * every answer is a number, and they add.
@@ -136,18 +147,14 @@ defmodule LocalizePad.Sheet do
     %{sheet | lines: Enum.reverse(state.lines)}
   end
 
-  defp evaluate_line(%Line{kind: :subtotal} = line, state) do
-    covered =
-      state.lines
-      |> Enum.take_while(&(&1.kind not in [:subtotal, :heading]))
-      |> Enum.reverse()
+  defp evaluate_line(%Line{kind: :aggregate} = line, state) do
+    covered = covered_by(state.lines)
+    value = aggregate_of(line.aggregate, covered, state.locale, latest_rates())
 
-    value = sum_of(covered, state.locale, latest_rates())
-
-    # A subtotal depends on every line it reaches back over, so editing any of
-    # them marks the subtotal for re-render. Without this the graph would say a
-    # subtotal depends on nothing, and an editor trusting it would leave a
-    # stale answer on screen.
+    # An aggregate depends on every line it reaches back over, so editing any
+    # of them marks the aggregate for re-render. Without this the graph would
+    # say it depends on nothing, and an editor trusting it would leave a stale
+    # answer on screen.
     line = %{
       line
       | value: value,
@@ -165,6 +172,26 @@ defmodule LocalizePad.Sheet do
     |> Map.update!(:lines, &[line | &1])
     |> Map.update!(:answers, &put_answer(&1, line))
     |> bind_variable(line)
+  end
+
+  # The block an aggregate reports on, given the lines above it in the order
+  # they were accumulated — most recent first.
+  #
+  # The leading run of aggregates is skipped rather than treated as a boundary,
+  # which is what lets `sum` / `average` / `median` stand one under the other
+  # and all three answer for the same entries. Reading `average` as a block
+  # bounded by the `sum` above it would give it nothing to average, and the
+  # obvious way to write two functions would produce one answer and one blank.
+  #
+  # Blank lines go with them, so a run may be spaced out. A blank separates
+  # nothing anywhere else in a sheet — only a heading or an aggregate bounds a
+  # block — and making it a boundary here alone would be a rule with one
+  # instance.
+  defp covered_by(lines) do
+    lines
+    |> Enum.drop_while(&(&1.kind in [:aggregate, :blank]))
+    |> Enum.take_while(&(&1.kind not in [:aggregate, :heading]))
+    |> Enum.reverse()
   end
 
   defp put_answer(answers, %Line{value: nil}), do: answers
@@ -220,7 +247,7 @@ defmodule LocalizePad.Sheet do
   def total(sheet, rates \\ latest_rates())
 
   def total(%__MODULE__{lines: lines, locale: locale}, rates) do
-    sum_of(lines, locale, rates)
+    aggregate_of(:sum, lines, locale, rates)
   end
 
   @doc """
@@ -536,32 +563,150 @@ defmodule LocalizePad.Sheet do
     Enum.map_join(lines, "\n", & &1.source)
   end
 
-  # ── Summing ─────────────────────────────────────────────────────────────
+  # ── Aggregating ─────────────────────────────────────────────────────────
 
-  # A sheet has a total when its answers are one kind of thing, each standing
-  # on its own. `independent?/2` decides the second; `add_up/2` the first.
-  defp sum_of(lines, locale, rates) do
-    counted = Enum.filter(lines, &(&1.kind == :expression and not is_nil(&1.value)))
-
-    if independent?(counted, transitive_dependencies(lines)) do
-      counted |> Enum.map(& &1.value) |> add_up(locale, rates)
-    end
-  end
-
-  # Three shapes have a total: numbers, quantities of one kind, and money.
-  # Anything else is a page of unlike things, and a page of unlike things has
-  # no sum — not a partial one taken over whichever answers happened to agree
-  # with the topmost line.
+  # A sheet has an answer when its own answers are one kind of thing, each
+  # standing on its own. `independent?/2` decides the second; `combine/4` the
+  # first.
   #
   # Values that were never candidates are passed over rather than counted
   # against the sheet. A date beside a shopping list does not stop the list
-  # having a total; it simply is not part of one.
-  defp add_up(values, locale, rates) do
-    case Enum.filter(values, &summable?/1) do
-      [] -> nil
-      summable -> add_together(summable, locale, rates)
+  # having a total; it simply is not part of one. It is not part of the count
+  # either, which is what keeps an average from being divided by the dates.
+  defp aggregate_of(function, lines, locale, rates) do
+    counted = Enum.filter(lines, &(&1.kind == :expression and not is_nil(&1.value)))
+
+    if independent?(counted, transitive_dependencies(lines)) do
+      counted
+      |> Enum.map(& &1.value)
+      |> Enum.filter(&summable?/1)
+      |> combine(function, locale, rates)
     end
   end
+
+  # Three shapes combine: numbers, quantities of one kind, and money. Anything
+  # else is a page of unlike things, and a page of unlike things has no answer
+  # — not a partial one taken over whichever values happened to agree with the
+  # topmost line.
+  defp combine([], _function, _locale, _rates), do: nil
+
+  defp combine(values, :sum, locale, rates), do: add_together(values, locale, rates)
+
+  # The average is the sum shared out, so it is exactly as answerable as the
+  # sum: a page that will not add will not average either, and one that adds
+  # in the reader's currency averages in it too.
+  defp combine(values, :average, locale, rates) do
+    case add_together(values, locale, rates) do
+      nil -> nil
+      total -> divide(total, length(values))
+    end
+  end
+
+  # The median needs an order rather than a sum, and an order over money or
+  # quantities means putting them in one currency or one unit first. An even
+  # count has no middle value, so it takes the mean of the two either side —
+  # which is the usual convention and the only one that does not silently
+  # prefer the lower half.
+  defp combine(values, :median, locale, rates) do
+    case ordered(values, locale, rates) do
+      {:ok, sorted} -> middle(sorted, locale, rates)
+      :error -> nil
+    end
+  end
+
+  defp middle(values, locale, rates) do
+    count = length(values)
+    above = div(count, 2)
+
+    if rem(count, 2) == 1 do
+      Enum.at(values, above)
+    else
+      case values |> Enum.slice(above - 1, 2) |> add_together(locale, rates) do
+        nil -> nil
+        total -> divide(total, 2)
+      end
+    end
+  end
+
+  # Dividing is how both an average and an even median are finished, and each
+  # shape has its own arithmetic for it. Money keeps more decimal places than
+  # its currency shows; the formatter rounds, so the sheet reports a currency
+  # amount rather than a repeating fraction.
+  defp divide(value, count) when is_number(value), do: value / count
+  defp divide(%Unit{} = unit, count), do: unwrap(Unit.Math.div(unit, count))
+  defp divide(%Money{} = money, count), do: unwrap(Money.div(money, count))
+
+  defp unwrap({:ok, value}), do: value
+  defp unwrap({:error, _reason}), do: nil
+
+  # Sorting is only defined within a shape, and only once the values are
+  # commensurable: euros and dollars compare after conversion, metres and
+  # centimetres after conversion, and metres and kilograms not at all.
+  defp ordered(values, locale, rates) do
+    cond do
+      Enum.all?(values, &is_number/1) -> {:ok, Enum.sort(values)}
+      Enum.all?(values, &match?(%Unit{}, &1)) -> order_units(values)
+      Enum.all?(values, &match?(%Money{}, &1)) -> order_money(values, locale, rates)
+      true -> :error
+    end
+  end
+
+  # Converted into the first answer's unit, for the same reason the sum is: it
+  # is the sheet's own way of writing this measure. A unit whose value is a
+  # list — `5 foot 10 inch` — has no single number to order by and refuses.
+  defp order_units([first | _rest] = values) do
+    with {:ok, converted} <- convert_each(values, &Unit.convert(&1, first.name)),
+         true <- Enum.all?(converted, &comparable_amount?/1) do
+      {:ok, Enum.sort_by(converted, &decimal(&1.value), {:asc, Decimal})}
+    else
+      _incomparable -> :error
+    end
+  end
+
+  # A page in one currency is ordered in it. A page in several is ordered in
+  # the reader's own, which is the currency its median will be reported in —
+  # ordering in one and answering in another could put the answer out of step
+  # with the values it came from.
+  defp order_money(values, locale, rates) do
+    if one_currency?(values) do
+      {:ok, sort_money(values)}
+    else
+      currency = reporting_currency(values, locale)
+
+      case convert_each(values, &Money.to_currency(&1, currency, rates)) do
+        {:ok, converted} -> {:ok, sort_money(converted)}
+        :error -> :error
+      end
+    end
+  end
+
+  # The reader's own currency, or the topmost value's where the locale names
+  # none — a page still has to be put in some one currency to be ordered.
+  defp reporting_currency([first | _rest], locale) do
+    case Localize.Currency.currency_from_locale(locale) do
+      {:ok, currency} -> currency
+      {:error, _reason} -> first.currency
+    end
+  end
+
+  defp sort_money(values), do: Enum.sort_by(values, & &1.amount, {:asc, Decimal})
+
+  # All or nothing. A median taken over the subset that happened to convert is
+  # the median of a different page.
+  defp convert_each(values, conversion) do
+    Enum.reduce_while(values, {:ok, []}, fn value, {:ok, converted} ->
+      case conversion.(value) do
+        {:ok, value} -> {:cont, {:ok, converted ++ [value]}}
+        {:error, _reason} -> {:halt, :error}
+      end
+    end)
+  end
+
+  defp comparable_amount?(%Unit{value: value}), do: is_number(value) or match?(%Decimal{}, value)
+
+  defp decimal(%Decimal{} = value), do: value
+  defp decimal(value) when is_integer(value), do: Decimal.new(value)
+  defp decimal(value) when is_float(value), do: Decimal.from_float(value)
 
   defp add_together(values, locale, rates) do
     cond do
@@ -616,12 +761,14 @@ defmodule LocalizePad.Sheet do
   # topmost line happened to use, and that is an accident of line order. The
   # reader's own currency is the one non-arbitrary answer.
   defp in_readers_currency(sum, values, locale, rates) do
-    if values |> Enum.uniq_by(& &1.currency) |> length() == 1 do
+    if one_currency?(values) do
       sum
     else
       convert(sum, Localize.Currency.currency_from_locale(locale), rates)
     end
   end
+
+  defp one_currency?(values), do: values |> Enum.uniq_by(& &1.currency) |> length() == 1
 
   # A total that cannot be restated in the reader's currency is still a correct
   # total, so it is reported as it stands rather than withheld.

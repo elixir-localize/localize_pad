@@ -38,7 +38,7 @@ defmodule LocalizePad.SheetTest do
                :comment,
                :declaration,
                :expression,
-               :subtotal,
+               :aggregate,
                :blank,
                :expression,
                :blank
@@ -137,6 +137,22 @@ defmodule LocalizePad.SheetTest do
       assert answers("10\n20\nsum\n5\nsum") == ["10", "20", "30", "5", "5"]
     end
 
+    test "an average divides the sum by the entries it covers" do
+      assert answers("19\n22\naverage") == ["19", "22", "20.5"]
+    end
+
+    test "and `mean` is the same function under another name" do
+      assert answers("19\n22\nmean") == ["19", "22", "20.5"]
+    end
+
+    test "a median of an odd count is the middle entry, in order rather than in place" do
+      assert answers("30\n10\n20\nmedian") == ["30", "10", "20", "20"]
+    end
+
+    test "and of an even count, the mean of the two either side" do
+      assert answers("1\n2\n3\n4\nmedian") == ["1", "2", "3", "4", "2.5"]
+    end
+
     test "a quantity that will not add refuses the total rather than being skipped" do
       # Skipping it would answer `41` for a sheet whose middle line is a
       # distance, under a label reading `Total`. There is no total of a number
@@ -163,6 +179,69 @@ defmodule LocalizePad.SheetTest do
     end
   end
 
+  describe "several functions over one block" do
+    test "each answers for the entries the run follows, not for the line above it" do
+      # Read as a boundary, the `sum` above would leave `average` and `median`
+      # with nothing to report on and two blank answers where the sheet asked
+      # two questions.
+      assert answers("10\n20\n30\nsum\naverage\nmedian") ==
+               ["10", "20", "30", "60", "20", "20"]
+    end
+
+    test "a blank line inside the run does not break it" do
+      # A blank separates nothing anywhere else in a sheet — only a heading or
+      # a function bounds a block.
+      assert answers("10\n20\nsum\n\naverage") == ["10", "20", "30", nil, "15"]
+    end
+
+    test "and the run still stops at a heading" do
+      source = """
+      # Food
+      19
+      22
+      sum
+      average
+      # Travel
+      100
+      median
+      """
+
+      assert answers(source) == [nil, "19", "22", "41", "20.5", nil, "100", "100", nil]
+    end
+
+    test "an entry below the run belongs to the next block, not the last one" do
+      assert answers("10\n20\nsum\naverage\n5\nsum") ==
+               ["10", "20", "30", "15", "5", "5"]
+    end
+  end
+
+  describe "quantities average and order in one unit" do
+    test "the average converts, and answers in the first entry's unit" do
+      assert answers("1 meter\n50 cm\naverage") == ["1 meter", "50 centimeters", "0.75 meters"]
+    end
+
+    test "and so does the median, which orders by size rather than by line" do
+      # 50 cm is the smallest of the three however early it is written.
+      assert answers("1 meter\n50 cm\n2 m\nmedian") ==
+               ["1 meter", "50 centimeters", "2 meters", "1 meter"]
+    end
+
+    test "quantities of different kinds have no average" do
+      assert answers("3 meters\n100 kg\naverage") == ["3 meters", "100 kilograms", nil]
+    end
+
+    test "and no median" do
+      assert answers("3 meters\n100 kg\nmedian") == ["3 meters", "100 kilograms", nil]
+    end
+
+    test "a value that was never a candidate is left out of the count as well as the sum" do
+      # Counted, the date would divide 41 by three and answer 13.67 for a page
+      # holding two numbers.
+      assert answers("19\nApril 12, 2026\n22\naverage") ==
+               ["19", "April 12, 2026", "22", "20.5"]
+    end
+  end
+
   describe "money totals" do
     # `Money.sum/2` takes the rates, so a sheet's total can be checked against
     # known ones rather than whatever the retriever last fetched.
@@ -177,6 +256,13 @@ defmodule LocalizePad.SheetTest do
       total = Sheet.total(Sheet.new("$240\n$89\n$120", locale: :en), %{})
 
       assert Money.equal?(total, Money.new(:USD, "449.00"))
+    end
+
+    test "and money averages and orders in it too, still needing no rate" do
+      # The average keeps the currency's own two places: `449 / 3` is rounded
+      # for display rather than reported as a repeating fraction.
+      assert answers("$240\n$89\n$120\nmedian\naverage") ==
+               ["$240.00", "$89.00", "$120.00", "$120.00", "$149.67"]
     end
 
     test "several currencies are converted into the reader's own" do

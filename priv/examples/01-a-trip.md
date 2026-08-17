@@ -14,6 +14,7 @@ $89 for the flight out
 $89 for the flight home
 $120 for dinner
 sum
+average
 
 // Some words are units *and* ordinary English —
 // `cup`, `stone`, `point`, `night`. Here `nights`
@@ -31,12 +32,12 @@ people = 2
 
 // Every line is numbered in the gutter, and @n is
 // the answer on line n.
-@11 / people
+@13 / people
 
 # What is left
 
 budget = $600
-budget - @11
+budget - @13
 
 // Try editing a number above. Everything that
 // depended on it follows.
