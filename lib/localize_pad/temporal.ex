@@ -399,11 +399,60 @@ defmodule LocalizePad.Temporal do
         Localize.DateTime.to_string(naive, locale: locale)
 
       _other ->
-        # A masked or qualified value — `156X`, `-0600~` — has no single date
-        # to show. Saying what it *is* beats printing its ISO form at someone.
-        LocalizePad.Temporal.Uncertain.explain(tempo)
+        format_from_parts(tempo, locale)
     end
   end
 
   def format(other, _options), do: {:error, {:unformattable, other}}
+
+  # `now` is `2026Y8M17DT1H15M`, and Tempo converts it to none of `Date`,
+  # `Time` or `NaiveDateTime`: a value resolved to the minute is an interval
+  # rather than an instant, which is the whole point of the library. Every part
+  # is still there to be read, so read them and supply the second Tempo did not
+  # record.
+  #
+  # Without this the clause below caught it, and `now` was explained rather than
+  # formatted — in English, in every locale, because an explanation is prose
+  # this application has not translated. `jetzt` answered `August 17, 2026 at
+  # 01:15.` on a German sheet.
+  #
+  # A qualified value is left alone. `circa 2026-08-17` has parts enough to
+  # build a datetime from, and rendering it as a plain one would drop the only
+  # thing the reader wrote it to say.
+  defp format_from_parts(%Tempo{qualification: nil} = tempo, locale) do
+    case naive_date_time(tempo) do
+      {:ok, naive} ->
+        # `:long` for the date to match a bare `heute`, and `:short` for the
+        # time because the value has no seconds — rendering `:00` would claim a
+        # precision Tempo never recorded.
+        Localize.DateTime.to_string(naive,
+          locale: locale,
+          date_format: :long,
+          time_format: :short
+        )
+
+      :error ->
+        LocalizePad.Temporal.Uncertain.explain(tempo)
+    end
+  end
+
+  # A masked or qualified value — `156X`, `-0600~` — has no single date to
+  # show. Saying what it *is* beats printing its ISO form at someone.
+  defp format_from_parts(tempo, _locale) do
+    LocalizePad.Temporal.Uncertain.explain(tempo)
+  end
+
+  defp naive_date_time(%Tempo{} = tempo) do
+    with year when is_integer(year) <- Tempo.year(tempo),
+         month when is_integer(month) <- Tempo.month(tempo),
+         day when is_integer(day) <- Tempo.day(tempo),
+         hour when is_integer(hour) <- Tempo.hour(tempo),
+         {:ok, date} <- Date.new(year, month, day),
+         {:ok, time} <- Time.new(hour, Tempo.minute(tempo) || 0, Tempo.second(tempo) || 0),
+         {:ok, naive} <- NaiveDateTime.new(date, time) do
+      {:ok, naive}
+    else
+      _not_a_date_time -> :error
+    end
+  end
 end

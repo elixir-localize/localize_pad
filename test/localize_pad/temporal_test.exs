@@ -195,6 +195,29 @@ defmodule LocalizePad.TemporalTest do
       assert answer("today + 3 weeks") == expected
     end
 
+    test "and `now` is rendered in the reader's locale, not explained in English" do
+      # `now` carries a date and a clock time and converts to none of Tempo's
+      # Elixir targets, because a value resolved to the minute is an interval.
+      # It used to fall through to the branch that explains a masked or
+      # qualified value, which answers in English whatever the sheet is written
+      # in — `jetzt` read `August 17, 2026 at 01:15.` on a German sheet.
+      # Every CLDR datetime pattern leads with the day or the year and joins the
+      # parts with a separator; none of them says `at`, and none ends in a full
+      # stop. Both are signatures of the explanation this used to fall into.
+      for {locale, word} <- [{:de, "jetzt"}, {:fr, "maintenant"}, {:ja, "今"}] do
+        formatted = answer(word, locale: locale)
+
+        refute formatted =~ " at "
+        refute String.ends_with?(formatted, ".")
+        assert formatted =~ ~r/^\d/
+      end
+    end
+
+    test "and it says no more than it knows" do
+      # Tempo records no second, so the answer must not show one.
+      refute answer("now") =~ ~r/:\d\d:\d\d/
+    end
+
     defp expected_date(date) do
       {:ok, formatted} = Localize.Date.to_string(date, locale: :en, format: :long)
       formatted

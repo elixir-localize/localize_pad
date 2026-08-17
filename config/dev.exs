@@ -1,14 +1,24 @@
 import Config
 
-# Configure your database
-config :localize_pad, LocalizePad.Repo,
-  username: System.get_env("PGUSER", "postgres"),
-  password: System.get_env("PGPASSWORD", "postgres"),
-  hostname: System.get_env("PGHOST", "localhost"),
-  database: "localize_pad_dev",
-  stacktrace: true,
-  show_sensitive_data_on_connection_error: true,
-  pool_size: 10
+# Configure your database, if there is one to configure.
+#
+# Nothing in the application reads or writes it yet — the repository is
+# scaffolding waiting for accounts — so a developer without a `localize_pad_dev`
+# database is the ordinary case rather than a broken setup. Starting it anyway
+# meant Ecto retried a connection nothing needed about once a second and wrote
+# a failure to the log each time, which buried everything worth reading.
+#
+# Same rule as production, in `config/runtime.exs`: no URL, no repository. Set
+# `DATABASE_URL` to get one back.
+if database_url = System.get_env("DATABASE_URL") do
+  config :localize_pad, LocalizePad.Repo,
+    url: database_url,
+    stacktrace: true,
+    show_sensitive_data_on_connection_error: true,
+    pool_size: 10
+else
+  config :localize_pad, start_repo: false
+end
 
 # For development, we disable any cache and enable
 # debugging and code reloading.
