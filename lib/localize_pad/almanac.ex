@@ -43,10 +43,14 @@ defmodule LocalizePad.Almanac do
   are actually asking about when they ask.
 
   The names are translated and the number is CLDR's, so a German sheet reads
-  `Zunehmende Sichel 🌒 · 29 % beleuchtet`. The words a reader *types* are
-  still English — `moon phase`, `sunrise` — which is the same split
-  `LocalizePad.Finance` lives with: an input vocabulary this application wrote,
-  and output in the reader's own language.
+  `Zunehmende Sichel 🌒 · 29 % beleuchtet`.
+
+  ## The words you type are yours too
+
+  `Sonnenaufgang`, `lever du soleil`, `amanecer`, `日の出` — the vocabulary is
+  per language and lives with the rest of it in `LocalizePad.Lexicon`. Each
+  language reads its own words and no other's, which is the rule the totalling
+  words already follow: `Summe` adds a German sheet up and `sum` does not.
 
   """
 
@@ -312,50 +316,6 @@ defmodule LocalizePad.Almanac do
     Map.fetch(@coordinates, zone)
   end
 
-  # The nouns that name an event. English only, as `LocalizePad.Finance` and
-  # `LocalizePad.SalesTax` are: the vocabulary of a calculation is the part
-  # this application writes rather than the part CLDR supplies, and translating
-  # it is a piece of work rather than a line here.
-  @nouns %{
-    "sunrise" => :sunrise,
-    "sunup" => :sunrise,
-    "dawn" => :sunrise,
-    "sunset" => :sunset,
-    "sundown" => :sunset,
-    "dusk" => :sunset,
-    "moonrise" => :moonrise,
-    "moonset" => :moonset,
-    "moonphase" => :moon_phase
-  }
-
-  # Written as two words more often than one, and the phase is asked for in
-  # more ways than it is named.
-  @phrases %{
-    "moon phase" => :moon_phase,
-    "phase of the moon" => :moon_phase,
-    "lunar phase" => :moon_phase
-  }
-
-  @doc """
-  The words this module had to be told.
-
-  TEMPORARY, for a demo — see `LocalizePad.Lexicon.authored/1`.
-
-  ### Returns
-
-  * A list of lowercased forms.
-
-  ### Examples
-
-      iex> "sunrise" in LocalizePad.Almanac.authored()
-      true
-
-  """
-  @spec authored() :: [String.t()]
-  def authored do
-    Map.keys(@nouns) ++ ["moon", "phase", "lunar"]
-  end
-
   @doc """
   Recognises a line asking for a sun or moon event.
 
@@ -394,25 +354,15 @@ defmodule LocalizePad.Almanac do
   def match(tokens, options \\ []) when is_list(tokens) do
     words = Enum.map(tokens, &(&1.source |> String.trim() |> String.downcase()))
 
-    case event(words) do
+    case event(words, Keyword.get_lazy(options, :locale, &Localize.get_locale/0)) do
       {:ok, event} -> {:ok, {:almanac, event, slots(tokens, options)}}
       :error -> :error
     end
   end
 
-  # A phrase before a noun, because `moon phase` holds a word that is not one
-  # of the nouns and would otherwise fall through as prose.
-  defp event(words) do
-    phrase = Enum.join(words, " ")
-
-    case Enum.find(@phrases, fn {form, _event} -> String.contains?(phrase, form) end) do
-      {_form, event} -> {:ok, event}
-      nil -> words |> Enum.find_value(&Map.get(@nouns, &1)) |> named()
-    end
-  end
-
-  defp named(nil), do: :error
-  defp named(event), do: {:ok, event}
+  # `Sonnenaufgang`, `lever du soleil`, `月の出` — the vocabulary is the
+  # reader's, and lives with the rest of it in `LocalizePad.Lexicon`.
+  defp event(words, locale), do: Lexicon.almanac_event(words, locale)
 
   # The place named on the line wins over the reader's own, which is the whole
   # point of naming one.

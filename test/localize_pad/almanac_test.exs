@@ -120,7 +120,7 @@ defmodule LocalizePad.AlmanacTest do
       # The name comes from the catalogue and the percentage from CLDR, which
       # puts a non-breaking space before the sign in German and none in
       # English. The date is German too, because the sheet is.
-      german = answer("moon phase on 24.12.2026", locale: :de)
+      german = answer("Mondphase am 24.12.2026", locale: :de)
 
       assert german =~ "Vollmond"
       assert german =~ "beleuchtet"
@@ -132,9 +132,16 @@ defmodule LocalizePad.AlmanacTest do
     test "and every phase has a name in every language" do
       # A gap in the catalogue shows as the English name rather than as an
       # error, so it has to be looked for rather than waited for.
-      for locale <- [:de, :fr, :es, :ja], date <- ["24.12.2026", "31.12.2026"] do
-        assert answer("moon phase on #{date}", locale: :de) != nil
-        refute answer("moon phase on 24.12.2026", locale: locale) =~ "Full moon"
+      asked = %{
+        de: "Mondphase am 24.12.2026",
+        fr: "phase de la lune le 24 décembre 2026",
+        es: "fase lunar el 24 de diciembre de 2026",
+        ja: "月相 2026-12-24"
+      }
+
+      for {locale, line} <- asked do
+        assert answer(line, locale: locale) != nil
+        refute answer(line, locale: locale) =~ "Full moon"
       end
     end
   end

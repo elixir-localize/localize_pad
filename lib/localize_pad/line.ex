@@ -184,7 +184,7 @@ defmodule LocalizePad.Line do
       function = aggregate_function(body, locale) ->
         %{line | kind: :aggregate, aggregate: function}
 
-      kind = trip_kind(body) ->
+      kind = trip_kind(body, locale) ->
         %{line | kind: kind, expression: body}
 
       captures = Regex.run(@declaration, body) ->
@@ -449,8 +449,8 @@ defmodule LocalizePad.Line do
 
   # `nil` rather than `:error`, for the same reason as the aggregate below it:
   # the `cond` binds the kind and tests it in one clause.
-  defp trip_kind(body) do
-    case Trip.classify(body) do
+  defp trip_kind(body, locale) do
+    case Trip.classify(body, locale) do
       {:ok, kind} -> kind
       :error -> nil
     end

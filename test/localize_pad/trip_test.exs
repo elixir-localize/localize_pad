@@ -210,22 +210,37 @@ defmodule LocalizePad.TripTest do
   end
 
   describe "the dates are the reader's" do
-    test "a German sheet reads German dates and answers in German" do
-      # Both halves are the reader's: the dates come from CLDR's interval
-      # format and the nights from the message catalogue.
-      assert answers("trip: 3.3.2026\n3 nights in Tokio", locale: :de) ==
+    test "a German sheet is written in German throughout" do
+      # Every part of the line is the reader's: the words that make it a trip,
+      # the date form, the interval format and the count of nights. Not one of
+      # them is English, and none of them is spelled out in this project —
+      # `Reise` and `Nächte` come from the lexicon, the rest from CLDR and the
+      # message catalogue.
+      assert answers("Reise: 3.3.2026\n3 Nächte in Tokio", locale: :de) ==
                ["3 Nächte", "03.03.2026\u2009–\u200906.03.2026"]
     end
 
     test "and one night is one night in every language" do
-      assert answers("trip: 3.3.2026\n1 night in Tokio", locale: :de) |> List.first() ==
+      assert answers("Reise: 3.3.2026\n1 Nacht in Tokio", locale: :de) |> List.first() ==
                "1 Nacht"
 
-      assert answers("trip: 3.3.2026\n1 night in Tokyo", locale: :fr) |> List.first() ==
+      assert answers("voyage : 3 mars 2026\n1 nuit à Tokyo", locale: :fr) |> List.first() ==
                "1 nuit"
 
-      assert answers("trip: 3.3.2026\n1 night in Tokyo", locale: :es) |> List.first() ==
-               "1 noche"
+      assert answers("viaje: 3 de marzo de 2026\n1 noche en Tokio", locale: :es)
+             |> List.first() == "1 noche"
+
+      assert answers("旅程 2026-03-03\n東京: 1泊", locale: :ja) |> List.first() == "1 泊"
+    end
+
+    test "and an English word is not a trip on a German sheet" do
+      # The same rule the totalling words follow: `Summe` adds a German sheet
+      # up and `sum` does not. A vocabulary that quietly accepted English too
+      # would make the localised words decoration.
+      assert answers("trip: 3.3.2026\n3 nights in Tokio", locale: :de) != [
+               "3 Nächte",
+               "03.03.2026\u2009–\u200906.03.2026"
+             ]
     end
 
     test "and an Australian sheet reads day-first" do
@@ -238,16 +253,16 @@ defmodule LocalizePad.TripTest do
 
   describe "reading a line as a stop" do
     test "the prose form gives its count and its place" do
-      assert Trip.stop(Line.classify(0, "3 nights in Tokyo")) == {:ok, 3, "Tokyo"}
+      assert Trip.stop(Line.classify(0, "3 nights in Tokyo"), :en) == {:ok, 3, "Tokyo"}
     end
 
     test "the label form does too" do
-      assert Trip.stop(Line.classify(0, "Kyoto: 5 nights")) == {:ok, 5, "Kyoto"}
+      assert Trip.stop(Line.classify(0, "Kyoto: 5 nights"), :en) == {:ok, 5, "Kyoto"}
     end
 
     test "and an ordinary line is not a stop" do
-      assert Trip.stop(Line.classify(0, "19 + 22")) == :error
-      assert Trip.stop(Line.classify(0, "Tokyo: $300")) == :error
+      assert Trip.stop(Line.classify(0, "19 + 22"), :en) == :error
+      assert Trip.stop(Line.classify(0, "Tokyo: $300"), :en) == :error
     end
   end
 end

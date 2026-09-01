@@ -103,6 +103,74 @@ defmodule LocalizePad.LanguagesTest do
     end
   end
 
+  describe "the sun and the moon in the reader's language" do
+    test "each language names the events its own way" do
+      # `Sonnenaufgang` is one word, `lever du soleil` is three, and `日の出`
+      # is three characters the segmenter may hand back either whole or split.
+      assert answer("Sonnenaufgang in Sydney am 21. Juni 2026", "de") == "06:59"
+      assert answer("lever du soleil à Sydney le 21 juin 2026", "fr") == "06:59"
+      assert answer("amanecer en Sídney el 21 de junio de 2026", "es") == "6:59"
+      assert answer("日の出 シドニー 2026-06-21", "ja") == "6:59"
+    end
+
+    test "and the sun sets in each of them too" do
+      # One sunset, four ways of asking. The clock reading is identical because
+      # it is the same sun over the same city.
+      assert answer("Sonnenuntergang in Tokio am 21. Juni 2026", "de") == "18:59"
+      assert answer("coucher du soleil à Tokyo le 21 juin 2026", "fr") == "18:59"
+      assert answer("puesta del sol en Tokio el 21 de junio de 2026", "es") == "18:59"
+      assert answer("日の入り 東京 2026-06-21", "ja") == "18:59"
+    end
+
+    test "the moon rises and sets in each, including where the script has no spaces" do
+      # `月の出` comes back as three tokens where `日の出` comes back as one,
+      # so the unspaced line has to be searched as well as the spaced one.
+      assert answer("Mondaufgang in Tokio am 21. Juni 2026", "de") != :no_expression
+      assert answer("月の出 東京 2026-06-21", "ja") != :no_expression
+      assert answer("月の入り 東京 2026-06-21", "ja") != :no_expression
+    end
+
+    test "and an English event word is prose on a sheet that is not English" do
+      # The rule the totalling words already follow: `Summe` adds a German
+      # sheet up and `sum` does not. What comes back is a refusal rather than a
+      # time — which refusal is not the point, and would only pin the parser.
+      refute is_binary(answer("sunrise in Tokyo on June 21, 2026", "de"))
+    end
+  end
+
+  describe "an itinerary in the reader's language" do
+    test "the same trip, five ways, arriving at the same arithmetic" do
+      trips = [
+        {"trip from March 3, 2026\n3 nights in Tokyo\n5 nights in Kyoto", "en"},
+        {"Reise ab 3.3.2026\n3 Nächte in Tokio\n5 Nächte in Kyoto", "de"},
+        {"voyage du 3 mars 2026\n3 nuits à Tokyo\n5 nuits à Kyoto", "fr"},
+        {"viaje del 3 de marzo de 2026\n3 noches en Tokio\n5 noches en Kioto", "es"},
+        {"旅程 2026-03-03\n東京: 3泊\n京都: 5泊", "ja"}
+      ]
+
+      for {source, locale} <- trips do
+        assert opening(source, locale) =~ "8", "#{locale} did not total eight nights"
+      end
+    end
+
+    test "a trip closes in its own language, and counts what is left in it" do
+      assert opening("Reise ab 3.3.2026\n3 Nächte in Tokio\nReise endet 22.3.2026", "de") ==
+               "3 Nächte, 16 übrig"
+
+      assert opening("voyage du 3 mars 2026\n3 nuits à Tokyo\nvoyage fin 22 mars 2026", "fr") ==
+               "3 nuits, 16 de libre"
+    end
+
+    # A trip reports on its opening line, where the others report on their last.
+    defp opening(source, locale) do
+      source
+      |> Sheet.new(locale: locale)
+      |> Map.fetch!(:lines)
+      |> List.first()
+      |> Map.get(:formatted)
+    end
+  end
+
   describe "the core of the language works in each" do
     # Not exhaustive — a regression net across the capabilities most likely to
     # break when the locale changes, written natively in each.

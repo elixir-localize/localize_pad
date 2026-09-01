@@ -41,7 +41,7 @@ defmodule LocalizePad.Lexicon do
 
   """
 
-  alias LocalizePad.{Almanac, Finance, Locales, SalesTax}
+  alias LocalizePad.{Finance, Locales, SalesTax}
   alias LocalizePad.Temporal.Uncertain
 
   @type role ::
@@ -337,6 +337,192 @@ defmodule LocalizePad.Lexicon do
     end)
   end
 
+  # The events `LocalizePad.Almanac` answers for, in the reader's own words.
+  #
+  # Most are compounds — `Sonnenaufgang`, `lever du soleil`, `salida del sol`,
+  # `日の出` — so a form here may be one word or several, and both are matched
+  # against the line rather than against a single token.
+  #
+  # Japanese is why the unspaced line is searched as well as the spaced one.
+  # The segmenter's dictionary knows `日の出` and hands it back whole, but
+  # splits `月の出` into three tokens and `月相` into two, so a form written the
+  # way a reader types it would otherwise match one and miss the others. Only
+  # forms with no Latin letters are looked for that way: joining an English
+  # line's words would make `the sun set` contain `sunset`.
+  @almanac %{
+    en: %{
+      sunrise: ["sunrise", "sunup", "dawn"],
+      sunset: ["sunset", "sundown", "dusk"],
+      moonrise: ["moonrise"],
+      moonset: ["moonset"],
+      moon_phase: ["moon phase", "phase of the moon", "lunar phase", "moonphase"]
+    },
+    de: %{
+      sunrise: ["sonnenaufgang", "morgendämmerung"],
+      sunset: ["sonnenuntergang", "abenddämmerung"],
+      moonrise: ["mondaufgang"],
+      moonset: ["monduntergang"],
+      moon_phase: ["mondphase", "mondphasen"]
+    },
+    fr: %{
+      sunrise: ["lever du soleil", "lever de soleil", "aube", "aurore"],
+      sunset: ["coucher du soleil", "coucher de soleil", "crépuscule"],
+      moonrise: ["lever de la lune", "lever de lune"],
+      moonset: ["coucher de la lune", "coucher de lune"],
+      moon_phase: ["phase de la lune", "phase lunaire"]
+    },
+    es: %{
+      sunrise: ["amanecer", "salida del sol", "alba", "aurora"],
+      sunset: ["atardecer", "puesta del sol", "ocaso", "anochecer"],
+      moonrise: ["salida de la luna"],
+      moonset: ["puesta de la luna"],
+      moon_phase: ["fase lunar", "fase de la luna"]
+    },
+    ja: %{
+      sunrise: ["日の出", "日出"],
+      sunset: ["日の入り", "日の入", "日没"],
+      moonrise: ["月の出"],
+      moonset: ["月の入り", "月の入", "月没"],
+      moon_phase: ["月相", "月の満ち欠け"]
+    }
+  }
+
+  @doc """
+  The sun or moon event a line names, if it names one.
+
+  ### Arguments
+
+  * `words` - the line's words, in order.
+
+  * `locale` - the locale whose vocabulary to read.
+
+  ### Returns
+
+  * `{:ok, event}` where event is `:sunrise`, `:sunset`, `:moonrise`,
+    `:moonset` or `:moon_phase`.
+
+  * `:error` when the line names none, which is nearly every line.
+
+  ### Examples
+
+      iex> LocalizePad.Lexicon.almanac_event(["sunrise", "tomorrow"], :en)
+      {:ok, :sunrise}
+
+      iex> LocalizePad.Lexicon.almanac_event(["lever", "du", "soleil"], :fr)
+      {:ok, :sunrise}
+
+      iex> LocalizePad.Lexicon.almanac_event(["月", "の", "出"], :ja)
+      {:ok, :moonrise}
+
+      iex> LocalizePad.Lexicon.almanac_event(["breakfast"], :en)
+      :error
+
+  """
+  @spec almanac_event([String.t()], Locales.locale()) :: {:ok, atom()} | :error
+  def almanac_event(words, locale \\ :en) when is_list(words) do
+    words = Enum.map(words, &String.downcase/1)
+    spaced = Enum.join(words, " ")
+    tight = Enum.join(words)
+
+    @almanac
+    |> Map.get(language(locale), @almanac.en)
+    |> almanac_forms()
+    |> Enum.find_value(:error, fn {form, event} ->
+      if names_event?(form, words, spaced, tight), do: {:ok, event}
+    end)
+  end
+
+  # Longest first, so `phase of the moon` is read as the phase rather than
+  # `moon` alone being caught by a shorter form.
+  defp almanac_forms(table) do
+    for({event, forms} <- table, form <- forms, do: {form, event})
+    |> Enum.sort_by(fn {form, _event} -> -String.length(form) end)
+  end
+
+  defp names_event?(form, words, spaced, tight) do
+    cond do
+      String.contains?(form, " ") -> String.contains?(spaced, form)
+      form in words -> true
+      latin_script?(form) -> false
+      true -> String.contains?(tight, form)
+    end
+  end
+
+  defp latin_script?(form), do: String.match?(form, ~r/[a-z]/u)
+
+  # The words `LocalizePad.Trip` is built from: the noun that opens an
+  # itinerary, the words that close one, the units a stay is counted in, and
+  # the preposition that puts a stay somewhere.
+  #
+  # `at` is its own list rather than the `:to` role because the two disagree.
+  # French says `3 nuits à Paris` and converts with `en`, so adding `à` to the
+  # conversion role to serve trips would change what `3 mètres à pieds` means.
+  # Japanese marks the place with `に`, which sits *after* it — see
+  # `LocalizePad.Trip` on why that order is read only inside a trip.
+  @trip %{
+    en: %{
+      opens: ["trip", "itinerary"],
+      ends: ["end", "ends", "ending", "finish", "finishes", "finishing"],
+      stays: ["night", "nights", "day", "days"],
+      at: ["in", "at"]
+    },
+    de: %{
+      opens: ["reise"],
+      ends: ["endet", "ende", "endend", "schluss"],
+      stays: ["nacht", "nächte", "naechte", "tag", "tage"],
+      at: ["in"]
+    },
+    fr: %{
+      opens: ["voyage"],
+      ends: ["fin", "finit", "termine", "termine le"],
+      stays: ["nuit", "nuits", "jour", "jours"],
+      at: ["à", "a", "en"]
+    },
+    es: %{
+      opens: ["viaje"],
+      ends: ["fin", "termina", "acaba"],
+      stays: ["noche", "noches", "día", "dia", "días", "dias"],
+      at: ["en"]
+    },
+    ja: %{
+      opens: ["旅程", "旅行"],
+      ends: ["終了", "まで"],
+      stays: ["泊", "日"],
+      at: ["に", "で"]
+    }
+  }
+
+  @doc """
+  The trip vocabulary for a locale.
+
+  ### Arguments
+
+  * `locale` - the locale whose vocabulary to read.
+
+  ### Returns
+
+  * A map with `:opens`, `:ends`, `:stays` and `:at`, each a list of lowercased
+    forms.
+
+  ### Examples
+
+      iex> LocalizePad.Lexicon.trip(:de).opens
+      ["reise"]
+
+      iex> "nuits" in LocalizePad.Lexicon.trip(:fr).stays
+      true
+
+  """
+  @spec trip(Locales.locale()) :: %{
+          opens: [String.t()],
+          ends: [String.t()],
+          stays: [String.t()],
+          at: [String.t()]
+        }
+  def trip(locale \\ :en) do
+    Map.get(@trip, language(locale), @trip.en)
+  end
+
   # Words that name the reader's own units as a conversion target: `42 km in
   # preferred units`. The answer comes from CLDR's unit preferences for the
   # sheet's territory, so `en-AU` keeps kilometres where `en-US` gets miles.
@@ -571,11 +757,18 @@ defmodule LocalizePad.Lexicon do
       @aggregates |> Map.get(language, @aggregates.en) |> Map.values() |> List.flatten(),
       Map.get(@preferences, language, @preferences.en),
       @usages |> Map.get(language, @usages.en) |> Map.keys(),
-      # Grammar this application wrote that does not live in these five tables.
+      # Split, because a form may be several words — `lever du soleil` is three
+      # — and what the underline marks is words.
+      @almanac
+      |> Map.get(language, @almanac.en)
+      |> Map.values()
+      |> List.flatten()
+      |> Enum.flat_map(&String.split/1),
+      @trip |> Map.get(language, @trip.en) |> Map.values() |> List.flatten(),
+      # Grammar this application wrote that does not live in these tables.
       # English only, as those modules are — `circa`, `monthly repayment` and
       # `VAT` are recognised in any locale because nothing has translated them
       # yet, and the underline should say so rather than flatter the count.
-      Almanac.authored(),
       Finance.authored(),
       SalesTax.authored(),
       Uncertain.authored()

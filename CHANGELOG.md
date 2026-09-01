@@ -20,13 +20,13 @@ The first version. Nothing has been tagged yet, so everything below is what 0.1.
 
 * **Tags.** `#food` on a line, and `sum #food` or `average #food` reports on the lines carrying it, back to the previous heading.
 
-* **Trip planning.** `trip from 3 March 2026` with `3 nights in Tokyo` under it gives every stop its own dates and says whether the itinerary fits the time budgeted.
+* **Trip planning.** `trip from 3 March 2026` with `3 nights in Tokyo` under it gives every stop its own dates and says whether the itinerary fits the time budgeted — and `Reise ab 3.3.2026` with `3 Nächte in Tokio` does the same in German.
 
 * **Units and money.** Around 2,760 units with conversion and unit arithmetic, currencies with live exchange rates, sales tax, and the financial phrases — loan repayment, present value, compound interest.
 
 * **Temporal questions.** Dates across 18 calendars, durations, time zones and overlap windows, recurrence (`every Friday the 13th`), territory-aware workdays, and uncertainty.
 
-* **Sun and moon.** Sunrise, sunset, moonrise, moonset and the phase of the moon, for a named place or for wherever the reader is, computed rather than looked up.
+* **Sun and moon.** Sunrise, sunset, moonrise, moonset and the phase of the moon, for a named place or for wherever the reader is, computed rather than looked up, and asked for as `Sonnenaufgang`, `lever du soleil`, `amanecer` or `日の出`.
 
 * **A two-column editor.** Syntax highlighting drawn from the engine's own tokens, a gutter numbering every line, and answers aligned line for line with the text that produced them.
 
@@ -34,4 +34,4 @@ The first version. Nothing has been tagged yet, so everything below is what 0.1.
 
 ### Known limitations
 
-* The words you *type* for trips and for the almanac — `trip`, `nights`, `sunrise`, `moon phase` — are English only, as the financial and tax vocabulary is. Every *answer* is translated.
+* The financial and tax vocabulary — `monthly repayment`, `VAT`, `circa` — is still English only, where the operators, aggregates, trips and almanac all read the reader's language.
