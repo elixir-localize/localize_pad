@@ -35,5 +35,3 @@ The first version. Nothing has been tagged yet, so everything below is what 0.1.
 ### Known limitations
 
 * The words you *type* for trips and for the almanac — `trip`, `nights`, `sunrise`, `moon phase` — are English only, as the financial and tax vocabulary is. Every *answer* is translated.
-
-* `LocalizePad.Temporal.Recurrence` carries a workaround for an ex_tempo defect that drops recurrences whose rule names a month when the sheet is read on the 31st. Remove it once that is fixed.

@@ -79,7 +79,7 @@ defmodule LocalizePad.MixProject do
       {:localize, "~> 1.2"},
       {:localize_web, "~> 1.1"},
       {:calendrical, "~> 1.2"},
-      {:ex_tempo, "~> 1.2"},
+      {:ex_tempo, "~> 1.5"},
       {:unity, "~> 1.1"},
       {:ex_money, "~> 6.2"},
 
