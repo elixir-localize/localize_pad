@@ -75,6 +75,34 @@ welcher Wochentag ist der 24.01.1984
 16.05.2026 + 3 Wochen
 10.01.2027 - 05.02.2027
 
+# Eine Reise planen
+
+// Auch die Wörter, die man *tippt*, sind deutsch.
+// `Reise` eröffnet einen Plan, `Nächte` zählt die
+// Aufenthalte — `trip` und `nights` tun das hier
+// nicht, so wie `sum` ein deutsches Blatt nicht
+// addiert.
+Reise ab 3.3.2026 bis 22.3.2026
+3 Nächte in Tokio
+5 Nächte in Kyoto
+4 Nächte in Osaka
+
+// Zwölf von neunzehn Nächten. Die Zeitspannen
+// kommen aus CLDRs Intervallformat, die Zahl der
+// Nächte aus dem Katalog — mit der deutschen
+// Pluralregel.
+
+# Schlagwörter
+
+// Ein `#wort` sagt, um welche Art von Ausgabe es
+// sich handelt.
+Flüge: 1.850 € #transport
+Hotel Tokio: 620 € #unterkunft
+Hotel Kyoto: 890 € #unterkunft
+summe #unterkunft
+durchschnitt #unterkunft
+summe
+
 # Ortsübliche Einheiten
 
 // `lokal` fragt nach den Einheiten, die hier

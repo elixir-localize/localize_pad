@@ -79,6 +79,42 @@ defmodule LocalizePad.RecurrenceTest do
     end
   end
 
+  describe "a stated month" do
+    # `every Monday in June 2026` answered with the next five Mondays from
+    # today, ignoring both the month and the year. It was not empty and it did
+    # not raise — it was five plausible dates answering a question nobody had
+    # asked, which is the kind that goes unnoticed.
+    test "bounds the recurrence to that month" do
+      assert dates("every Monday in June 2026") == [
+               ~D[2026-06-01],
+               ~D[2026-06-08],
+               ~D[2026-06-15],
+               ~D[2026-06-22],
+               ~D[2026-06-29]
+             ]
+    end
+
+    test "and its year comes with it, even though the scanner claimed both" do
+      # `June 2026` reaches the rule builder as one temporal token rather than
+      # as a month word beside a number, which is why the year was invisible.
+      assert [~D[2027-03-02] | _rest] = dates("every Tuesday in March 2027")
+    end
+
+    test "a month with no year means the next one" do
+      assert [%Date{month: 6} | _rest] = dates("every Monday in June")
+    end
+
+    test "and a phrase naming no month still counts from today" do
+      # The repair must not reach the phrases it was not written for.
+      assert [first | _rest] = dates("every Monday")
+      assert Date.compare(first, Date.utc_today()) in [:gt, :eq]
+    end
+
+    test "in the reader's language too" do
+      assert [~D[2026-06-01] | _rest] = dates("jeden Montag im Juni 2026", locale: :de)
+    end
+  end
+
   describe "the day the question is asked on" do
     # A rule naming its own month is the same rule whichever day it is read on,
     # and these pin that rather than leaving it to whatever date the suite

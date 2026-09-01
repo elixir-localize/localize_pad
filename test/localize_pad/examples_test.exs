@@ -94,6 +94,68 @@ defmodule LocalizePad.ExamplesTest do
     end
   end
 
+  describe "the sample the page opens with" do
+    # The one sheet rendered in whatever locale the reader arrives with. An
+    # English sample under a German locale is not merely untranslated, it is
+    # broken — `sum` totals nothing and `5 nights in Kyoto` answered `5
+    # Zoll⋅Übernachtungen`, because `in` is inches and `Nächte` is a unit.
+    test "answers every one of its lines, in every language it ships" do
+      for locale <- [:en, :de, :fr, :es, :ja] do
+        {source, tag} = Examples.sample(locale)
+
+        dead =
+          source
+          |> Sheet.new(locale: tag)
+          |> Map.fetch!(:lines)
+          |> Enum.filter(&(&1.kind in [:expression, :aggregate, :trip, :trip_stop, :declaration]))
+          |> Enum.reject(& &1.formatted)
+          |> Enum.map(&"  #{&1.source} → #{inspect(&1.error)}")
+
+        assert dead == [], "the #{locale} sample has dead lines:\n" <> Enum.join(dead, "\n")
+      end
+    end
+
+    test "is written for the reader's language, not merely shown in it" do
+      {german, tag} = Examples.sample(:de)
+
+      assert to_string(tag) == "de"
+      assert german =~ "summe"
+      refute german =~ "sum\n"
+    end
+
+    test "and a language with no sample gets the English one, and is told so" do
+      # Answering in English is fine; claiming the sheet is Portuguese while
+      # showing English is not, so the locale comes back with the source.
+      {source, tag} = Examples.sample("pt-BR")
+
+      assert to_string(tag) == "en"
+      assert source =~ "A first sheet"
+    end
+
+    test "a regional tag opens its language's sample and keeps its territory" do
+      # `de-AT` types the same words as `de` and writes its dates differently,
+      # so it gets the German sample read as Austrian. Returning `de` here cost
+      # `en-AU` its kilometres.
+      {source, tag} = Examples.sample("de-AT")
+
+      assert to_string(tag) == "de-AT"
+      assert source =~ "Ein erstes Blatt"
+
+      {_source, australian} = Examples.sample("en-AU")
+
+      assert to_string(australian) == "en-AU"
+    end
+
+    test "every sample round-trips through download and open" do
+      for locale <- [:en, :de, :fr, :es, :ja] do
+        {source, tag} = Examples.sample(locale)
+        markdown = source |> Sheet.new(locale: tag) |> Sheet.to_markdown()
+
+        assert {:ok, ^source, _locale} = Sheet.from_markdown(markdown)
+      end
+    end
+  end
+
   describe "fetching one" do
     test "by id" do
       assert {:ok, example} = Examples.fetch("02-time")

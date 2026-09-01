@@ -158,29 +158,17 @@ defmodule LocalizePadWeb.SheetLive do
     Value
   }
 
-  @sample """
-  # A first sheet
-
-  Breakfast: 19 + 22
-  hotel = 120
-  hotel * 3 nights
-  sum
-  average
-
-  // Anything after two slashes is ignored
-  3 meters to feet
-  100 kg * 9.8 m/s^2
-  60 mph to km/h
-
-  distance = 42.195 km
-  distance to miles
-  @3 + 100
-  """
-
   @impl Phoenix.LiveView
   def mount(_params, session, socket) do
     locale = current_locale()
     topic = topic(session)
+
+    # The sample is the one sheet rendered in whatever locale the reader
+    # arrives with, so there is one per language — see
+    # `LocalizePad.Examples.sample/1`. The locale comes back with it, because a
+    # reader whose language has no sample gets the English one and must be
+    # shown `en` in the picker rather than told the sheet is theirs.
+    {sample, locale} = Examples.sample(locale)
 
     # Only once connected: the first, static render has no process to keep a
     # subscription for.
@@ -190,7 +178,7 @@ defmodule LocalizePadWeb.SheetLive do
      socket
      |> assign(:topic, topic)
      |> assign(:locale, locale)
-     |> assign(:source, @sample)
+     |> assign(:source, sample)
      |> assign(:locale_options, Locales.suggestions())
      |> assign(:locale_error, nil)
      |> assign(:prefer_local, false)
@@ -438,9 +426,9 @@ defmodule LocalizePadWeb.SheetLive do
   # column of figures, before the total is written beneath it.
   #
   # One per run, not one per aggregate, so `sum` / `average` / `median` read as
-  # one bracketed group rather than three stripes. Blank lines sit inside a run
-  # here exactly as they do in the block the run reports on — the two rules
-  # have to agree or the drawing would contradict the arithmetic.
+  # one bracketed group rather than three stripes. Blanks and comments sit
+  # inside a run here exactly as they do in the block the run reports on — the
+  # two rules have to agree or the drawing would contradict the arithmetic.
   #
   # An aggregate with no answer is passed over rather than ruled off. A rule
   # over an empty row delineates nothing, and where the sum refuses but the
@@ -451,7 +439,7 @@ defmodule LocalizePadWeb.SheetLive do
         %Line{kind: :aggregate, formatted: nil}, accumulated -> accumulated
         %Line{kind: :aggregate} = line, {ruled, false} -> {MapSet.put(ruled, line.index), true}
         %Line{kind: :aggregate}, accumulated -> accumulated
-        %Line{kind: :blank}, accumulated -> accumulated
+        %Line{kind: kind}, accumulated when kind in [:blank, :comment] -> accumulated
         _line, {ruled, _drawn} -> {ruled, false}
       end)
 

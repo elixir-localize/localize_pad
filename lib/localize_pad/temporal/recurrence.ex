@@ -152,6 +152,15 @@ defmodule LocalizePad.Temporal.Recurrence do
     {:ok, "FREQ=MONTHLY;BYDAY=#{ordinal}#{weekday}"}
   end
 
+  # `every Monday in June` — every Monday, but only in that month. Without
+  # this the month was read and then dropped: the phrase fell through to the
+  # weekly rule below and answered with the next five Mondays from today,
+  # which is a plausible-looking answer to a question nobody asked.
+  defp compose(%{weekday: weekday, month: month})
+       when is_binary(weekday) and is_integer(month) do
+    {:ok, "FREQ=YEARLY;BYMONTH=#{month};BYDAY=#{weekday}"}
+  end
+
   defp compose(%{weekday: weekday}) when is_binary(weekday) do
     {:ok, "FREQ=WEEKLY;BYDAY=#{weekday}"}
   end
@@ -223,10 +232,23 @@ defmodule LocalizePad.Temporal.Recurrence do
 
   # A four-digit number is a year. A one- or two-digit one is a day of the
   # month — `Friday the 13th`.
+  #
+  # The year is also looked for inside a date, because the scanner claims one
+  # before this ever sees it: `in June 2026` arrives as a single temporal token
+  # and not as the word `June` beside the number `2026`. Reading only bare
+  # numbers meant the year of `every Monday in June 2026` was silently dropped
+  # along with its month, and the phrase answered from today.
   defp find_year(tokens) do
     Enum.find_value(tokens, fn token ->
-      if token.kind == :number and is_integer(token.value) and token.value > 1900 do
-        token.value
+      cond do
+        token.kind == :number and is_integer(token.value) and token.value > 1900 ->
+          token.value
+
+        token.kind == :temporal and is_map(token.value) ->
+          Map.get(token.value, :year)
+
+        true ->
+          nil
       end
     end)
   end

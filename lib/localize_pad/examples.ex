@@ -31,6 +31,7 @@ defmodule LocalizePad.Examples do
   alias LocalizePad.{Locales, Sheet}
 
   @directory "examples"
+  @samples "samples"
 
   @type t :: %{
           id: String.t(),
@@ -102,6 +103,84 @@ defmodule LocalizePad.Examples do
   end
 
   def fetch(_id), do: :error
+
+  @doc """
+  The sheet the page opens with, in the reader's own language.
+
+  ## Why this is not one sheet
+
+  A sample is the only sheet rendered under whatever locale the reader arrives
+  with — every other one carries its own `Locale:` line. An English sample
+  shown to a German reader is not merely untranslated, it is *broken*: `sum`
+  totals nothing, `3 meters to feet` converts nothing, and `5 nights in Kyoto`
+  answers `5 Zoll⋅Übernachtungen`, because `in` is inches and `Nächte` is a
+  unit. A page whose first claim is that it reads your language cannot open
+  with a page of blanks.
+
+  So there is one per language, each written natively rather than translated
+  from the English — the German sample avoids `m/s²` because CLDR has no
+  German name for it, and multiplies by a bare `3` because `3 Nächte` is a
+  quantity in German where `3 nights` is prose in English.
+
+  ### Arguments
+
+  * `locale` - the reader's locale.
+
+  ### Returns
+
+  * `{source, locale}` — the sheet's text and the locale to read it in. The
+    reader's own locale comes back untouched where there is a sample for its
+    language, territory and all: `en-AU` opens the English sample and still
+    answers in kilometres. Only a language with no sample at all falls back,
+    and then the locale falls back with it — a reader shown English must be
+    told the sheet is English rather than left to believe it is theirs.
+
+  ### Examples
+
+      iex> {source, locale} = LocalizePad.Examples.sample(:de)
+      iex> {String.contains?(source, "Ein erstes Blatt"), to_string(locale)}
+      {true, "de"}
+
+      iex> {_source, locale} = LocalizePad.Examples.sample("en-AU")
+      iex> to_string(locale)
+      "en-AU"
+
+      iex> {_source, locale} = LocalizePad.Examples.sample("pt-BR")
+      iex> to_string(locale)
+      "en"
+
+  """
+  @spec sample(Locales.locale()) :: {String.t(), Locales.locale()}
+  def sample(locale) do
+    with {:ok, language} <- language(locale),
+         {:ok, contents} <- File.read(Path.join(sample_directory(), "#{language}.md")),
+         {:ok, source, _tag} <- Sheet.from_markdown(contents) do
+      {source, locale}
+    else
+      _no_sample_for_this_language -> english_sample()
+    end
+  end
+
+  defp english_sample do
+    {:ok, contents} = File.read(Path.join(sample_directory(), "en.md"))
+    {:ok, source, tag} = Sheet.from_markdown(contents)
+
+    {source, tag}
+  end
+
+  # The language alone, so `de-AT` and `de-CH` open the German sample. A
+  # territory changes how numbers and dates are written, which the sheet reads
+  # from CLDR; it does not change which words the reader types.
+  defp language(locale) do
+    case Localize.validate_locale(locale) do
+      {:ok, language_tag} -> {:ok, to_string(language_tag.language)}
+      {:error, _reason} -> :error
+    end
+  end
+
+  defp sample_directory do
+    :localize_pad |> :code.priv_dir() |> Path.join(@samples)
+  end
 
   defp directory do
     :localize_pad |> :code.priv_dir() |> Path.join(@directory)

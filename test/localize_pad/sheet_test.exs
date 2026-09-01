@@ -210,6 +210,14 @@ defmodule LocalizePad.SheetTest do
                ["10", "20", "30", "60", "20", "20"]
     end
 
+    test "a comment inside the run does not break it either" do
+      # A sheet explaining its own totals put a line of prose between the
+      # subtotal and the average, and the average reported on nothing. A
+      # comment is no more an entry than a blank is.
+      assert answers("10\n20\nsum\n// and shared out\naverage") ==
+               ["10", "20", "30", nil, "15"]
+    end
+
     test "a blank line inside the run does not break it" do
       # A blank separates nothing anywhere else in a sheet — only a heading or
       # a function bounds a block.

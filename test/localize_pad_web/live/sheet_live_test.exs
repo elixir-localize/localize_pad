@@ -54,6 +54,30 @@ defmodule LocalizePadWeb.SheetLiveTest do
       refute html =~ ~s(value="it-IT")
     end
 
+    test "a German reader opens a sheet written in German" do
+      # The sample is the one sheet rendered in whatever locale the reader
+      # arrives with. An English one under a German locale answered seven of
+      # its fifteen lines, and `5 nights in Kyoto` answered `5
+      # Zoll⋅Übernachtungen` — `in` is inches and `Nächte` is a unit.
+      conn = get(build_conn(), ~p"/?locale=de")
+      {:ok, _live, html} = live(conn)
+
+      assert html =~ "Ein erstes Blatt"
+      assert html =~ "summe"
+      refute html =~ "A first sheet"
+    end
+
+    test "and every line of it answers" do
+      conn = get(build_conn(), ~p"/?locale=de")
+      {:ok, _live, html} = live(conn)
+
+      # The German sample's own numbers, which only appear if the sheet read
+      # itself: the sum, the average and the trip.
+      assert html =~ "401"
+      assert html =~ "200,5"
+      assert html =~ "8 Nächte"
+    end
+
     test "but a locale we do ship is honoured" do
       conn = get(build_conn(), ~p"/?locale=en-AU")
       {:ok, _live, html} = live(conn)
@@ -206,6 +230,15 @@ defmodule LocalizePadWeb.SheetLiveTest do
 
       # Three stripes would say the three answers were three separate things.
       html = render_change(live, :edit, %{"source" => "10\n20\nsum\naverage\nmedian"})
+
+      assert ruled_lines(html) == [2]
+    end
+
+    test "and a comment inside the run does not start a second one", %{conn: conn} do
+      {:ok, live, _html} = live(conn, ~p"/")
+
+      # The drawing and the arithmetic have to agree about what a run is.
+      html = render_change(live, :edit, %{"source" => "10\n20\nsum\n// prose\naverage"})
 
       assert ruled_lines(html) == [2]
     end

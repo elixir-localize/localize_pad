@@ -253,13 +253,14 @@ defmodule LocalizePad.Sheet do
   # bounded by the `sum` above it would give it nothing to average, and the
   # obvious way to write two functions would produce one answer and one blank.
   #
-  # Blank lines go with them, so a run may be spaced out. A blank separates
-  # nothing anywhere else in a sheet — only a heading or an aggregate bounds a
-  # block — and making it a boundary here alone would be a rule with one
-  # instance.
+  # Blanks and comments go with them, so a run may be spaced out and explained.
+  # Neither separates anything anywhere else in a sheet — only a heading or an
+  # aggregate bounds a block — and making them boundaries here alone would be a
+  # rule with one instance. A sheet that wrote a line of prose between its
+  # subtotal and its average had the average report on nothing at all.
   defp covered_by(lines, []) do
     lines
-    |> Enum.drop_while(&(&1.kind in [:aggregate, :blank]))
+    |> Enum.drop_while(&(&1.kind in [:aggregate, :blank, :comment]))
     |> Enum.take_while(&(&1.kind not in [:aggregate, :heading]))
     |> Enum.reverse()
   end
