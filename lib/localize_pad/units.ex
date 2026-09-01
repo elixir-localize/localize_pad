@@ -179,6 +179,11 @@ defmodule LocalizePad.Units do
   defp build(locale) do
     prefixed = for prefix <- @prefixes, unit <- @prefixable, do: prefix <> unit
 
+    # Once, rather than per name: the locale reaching here is a language tag,
+    # and resolving it thousands of times to ask the same question would be
+    # thousands of answers to it.
+    language = language(locale)
+
     Localize.Unit.known_units_by_category()
     |> Map.values()
     |> List.flatten()
@@ -189,7 +194,7 @@ defmodule LocalizePad.Units do
     |> Enum.sort_by(&{String.split(&1, "-") |> length(), String.length(&1)})
     |> Enum.reduce(%{}, fn unit, index ->
       unit
-      |> names_for(locale)
+      |> names_for(locale, language)
       |> Enum.reduce(index, fn {name, identifier}, acc ->
         Map.put_new(acc, name, identifier)
       end)
@@ -200,12 +205,41 @@ defmodule LocalizePad.Units do
   # shorter than three characters are dropped: they are abbreviations that
   # collide with ordinary words far more often than they help, and Unity's
   # alias table already covers the ones worth having.
-  defp names_for(unit, locale) do
+  defp names_for(unit, locale, language) do
     [display_name(unit, locale), singular(unit, locale)]
     |> Enum.reject(&is_nil/1)
+    |> Enum.flat_map(&[&1 | inflections(&1, language)])
     |> Enum.filter(&(String.length(&1) >= 3))
     |> Enum.map(&{normalize(&1), unit})
     |> Enum.uniq()
+  end
+
+  # German's dative plural takes an `-n`, and prepositions govern it: `nach 3
+  # Jahren`, `in 3 Monaten`, `vor 3 Tagen`. CLDR holds `Jahr` and `Jahre` and
+  # has no reason to hold `Jahren`, so the form a German writes after a
+  # preposition was not a unit at all — while `3 Wochen` worked, its plural
+  # already ending in `-n`, which is what made the gap look arbitrary.
+  #
+  # This is the German sibling of the trailing-`s` heuristic in
+  # `LocalizePad.Temporal.Recurrence`, and it is bounded the same way: it adds
+  # one form per name inside a table already known to be units, rather than
+  # retrying unresolved words against thousands of aliases. A form it invents
+  # that is not a word — `Fußn` — is never typed and never looked up, and
+  # `Map.put_new/3` means an invented form can never displace a real name.
+  defp inflections(name, "de") do
+    if String.ends_with?(name, "n"), do: [], else: [name <> "n"]
+  end
+
+  defp inflections(_name, _language), do: []
+
+  # The language alone. A tag reaches here — `de-AT` inflects exactly as `de`
+  # does, and an earlier version of this matched the atom `:de` and so did
+  # nothing at all for either, since a sheet always passes a tag.
+  defp language(locale) do
+    case Localize.validate_locale(locale) do
+      {:ok, language_tag} -> to_string(language_tag.language)
+      {:error, _reason} -> "und"
+    end
   end
 
   defp display_name(unit, locale) do

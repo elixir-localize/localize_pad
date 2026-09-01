@@ -30,8 +30,6 @@ The first version. Nothing has been tagged yet, so everything below is what 0.1.
 
 * **A two-column editor.** Syntax highlighting drawn from the engine's own tokens, a gutter numbering every line, and answers aligned line for line with the text that produced them.
 
-* **Sheets that travel.** Stored in the browser rather than on the server, shared through the URL fragment, exported as Markdown that can be opened again, and eight worked examples in four languages.
+* **Sheets that travel.** Stored in the browser rather than on the server, shared through the URL fragment, exported as Markdown that can be opened again, nine worked examples in four languages, and a first sheet written natively in each of the five.
 
-### Known limitations
-
-* The financial and tax vocabulary — `monthly repayment`, `VAT`, `circa` — is still English only, where the operators, aggregates, trips and almanac all read the reader's language.
+* **Every word you type is your own.** Operators, aggregates, trips, the almanac, sales taxes, the financial phrases and the qualifier on an approximate year all read the reader's language: `monatliche Rate auf 10.000 € über 6 Jahre zu 6 %` answers to the cent, as `MwSt`, `TVA`, `IVA` and `消費税` all do.

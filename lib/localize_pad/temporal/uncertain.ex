@@ -25,28 +25,9 @@ defmodule LocalizePad.Temporal.Uncertain do
 
   """
 
+  alias LocalizePad.{Lexicon, Locales}
+
   alias LocalizePad.Token
-
-  @approximate ~w(circa about approximately around)
-  @before_era ~w(bce bc)
-
-  @doc """
-  The words this module had to be told.
-
-  TEMPORARY, for a demo — see `LocalizePad.Lexicon.authored/1`.
-
-  ### Returns
-
-  * A list of lowercased forms.
-
-  ### Examples
-
-      iex> "circa" in LocalizePad.Temporal.Uncertain.authored()
-      true
-
-  """
-  @spec authored() :: [String.t()]
-  def authored, do: @approximate ++ @before_era
 
   @doc """
   Recognises an imprecise date.
@@ -72,13 +53,14 @@ defmodule LocalizePad.Temporal.Uncertain do
       {:ok, {:uncertain, "-0600~"}}
 
   """
-  @spec match([Token.t()]) :: {:ok, {:uncertain, String.t()}} | :error
-  def match(tokens) when is_list(tokens) do
+  @spec match([Token.t()], Locales.locale()) :: {:ok, {:uncertain, String.t()}} | :error
+  def match(tokens, locale \\ :en) when is_list(tokens) do
     words = Enum.map(tokens, &String.downcase(&1.source))
+    vocabulary = Lexicon.uncertainty(locale)
 
     cond do
       decade = find_decade(tokens, words) -> {:ok, {:uncertain, decade}}
-      qualified = find_qualified(tokens, words) -> {:ok, {:uncertain, qualified}}
+      qualified = find_qualified(tokens, words, vocabulary) -> {:ok, {:uncertain, qualified}}
       true -> :error
     end
   end
@@ -103,9 +85,9 @@ defmodule LocalizePad.Temporal.Uncertain do
 
   # `circa 600 BCE`, `1984?`. An era marker makes the year negative; an
   # approximation marker adds ISO 8601-2's `~`.
-  defp find_qualified(tokens, words) do
-    approximate? = Enum.any?(words, &(&1 in @approximate))
-    before_era? = Enum.any?(words, &(&1 in @before_era))
+  defp find_qualified(tokens, words, vocabulary) do
+    approximate? = Enum.any?(words, &(&1 in vocabulary.approximate))
+    before_era? = Enum.any?(words, &(&1 in vocabulary.before_era))
 
     with true <- approximate? or before_era?,
          year when is_integer(year) <- find_year(tokens) do

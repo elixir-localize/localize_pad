@@ -165,7 +165,7 @@ defmodule LocalizePad.Parser do
     # Financial phrases have three or four slots and no fixed word order, so
     # they are recognised whole rather than assembled from infix operators.
     # See `LocalizePad.Finance`.
-    case Finance.match(tokens) do
+    case Finance.match(tokens, Keyword.get(options, :locale, :en)) do
       {:ok, node} ->
         {:ok, node}
 
@@ -179,7 +179,7 @@ defmodule LocalizePad.Parser do
   defp phrase(tokens, variables, options) do
     with :error <- Inversion.match(tokens, options),
          :error <- Workdays.match(tokens, options),
-         :error <- Uncertain.match(tokens),
+         :error <- Uncertain.match(tokens, Keyword.get(options, :locale, :en)),
          :error <- Recurrence.match(tokens, options),
          # Last, so that a line which is a recurrence *and* names an event —
          # `sunrise every Monday` — keeps the reading it already had rather

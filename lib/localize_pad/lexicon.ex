@@ -41,8 +41,7 @@ defmodule LocalizePad.Lexicon do
 
   """
 
-  alias LocalizePad.{Finance, Locales, SalesTax}
-  alias LocalizePad.Temporal.Uncertain
+  alias LocalizePad.Locales
 
   @type role ::
           :to
@@ -523,6 +522,220 @@ defmodule LocalizePad.Lexicon do
     Map.get(@trip, language(locale), @trip.en)
   end
 
+  # The taxes a sheet can name. Every territory calls its own something else,
+  # and the abbreviation is what people write: `VAT` in Britain, `MwSt` in
+  # Germany, `TVA` in France, `IVA` in Spain, `消費税` in Japan.
+  #
+  # The English list travels with each of them. A tax is written on invoices
+  # that cross borders, and somebody reading a German sheet with a British
+  # invoice beside it types what the invoice says.
+  @taxes %{
+    en: ["vat", "gst", "sales tax"],
+    de: ["mwst", "mwst.", "mehrwertsteuer", "ust", "umsatzsteuer", "vat"],
+    fr: ["tva", "vat"],
+    es: ["iva", "vat"],
+    ja: ["消費税", "vat"]
+  }
+
+  # `circa 1955`. The qualifier that says a year is approximate, and the marker
+  # that puts it before the common era.
+  @uncertainty %{
+    en: %{approximate: ["circa", "about", "approximately", "around"], before_era: ["bce", "bc"]},
+    de: %{
+      approximate: ["circa", "ca", "ca.", "etwa", "ungefähr", "gegen"],
+      before_era: ["v.chr.", "vchr", "bce", "bc"]
+    },
+    fr: %{
+      approximate: ["circa", "environ", "vers", "approximativement"],
+      before_era: ["av.j.-c.", "avjc", "bce", "bc"]
+    },
+    es: %{
+      approximate: ["circa", "hacia", "aproximadamente", "alrededor"],
+      before_era: ["a.c.", "ac", "bce", "bc"]
+    },
+    ja: %{approximate: ["約", "頃", "ごろ", "circa"], before_era: ["紀元前", "bce", "bc"]}
+  }
+
+  @doc """
+  Whether a word names a sales tax.
+
+  ### Arguments
+
+  * `word` - the word to test.
+
+  * `locale` - the locale whose vocabulary to read.
+
+  ### Returns
+
+  * `true` or `false`.
+
+  ### Examples
+
+      iex> LocalizePad.Lexicon.tax?("VAT", :en)
+      true
+
+      iex> LocalizePad.Lexicon.tax?("MwSt", :de)
+      true
+
+      iex> LocalizePad.Lexicon.tax?("breakfast", :en)
+      false
+
+  """
+  @spec tax?(String.t(), Locales.locale()) :: boolean()
+  def tax?(word, locale \\ :en) when is_binary(word) do
+    String.downcase(word) in Map.get(@taxes, language(locale), @taxes.en)
+  end
+
+  @doc """
+  The words that qualify a year as uncertain.
+
+  ### Arguments
+
+  * `locale` - the locale whose vocabulary to read.
+
+  ### Returns
+
+  * A map with `:approximate` and `:before_era`, each a list of lowercased
+    forms.
+
+  ### Examples
+
+      iex> "ungefähr" in LocalizePad.Lexicon.uncertainty(:de).approximate
+      true
+
+      iex> "紀元前" in LocalizePad.Lexicon.uncertainty(:ja).before_era
+      true
+
+  """
+  @spec uncertainty(Locales.locale()) :: %{approximate: [String.t()], before_era: [String.t()]}
+  def uncertainty(locale \\ :en) do
+    Map.get(@uncertainty, language(locale), @uncertainty.en)
+  end
+
+  # The financial phrases. Only the nouns and qualifiers are here, because only
+  # they are words: the amount, the rate and the term are recognised by *type*
+  # — one money token, one percentage, one duration — and a type is the same in
+  # every language. That is why a page of vocabulary buys the whole feature.
+  #
+  # `present value` is two words in English and French and one in German, so
+  # the forms are matched as written rather than assembled from a pair.
+  @finance %{
+    en: %{
+      repayment: ["repayment", "repayments"],
+      interest: ["interest"],
+      present_value: ["present value"],
+      joins: ["after", "at", "@", "over", "for"],
+      total: ["total"],
+      compounding: ["compounding", "compounded"],
+      frequencies: %{
+        "daily" => :daily,
+        "weekly" => :weekly,
+        "monthly" => :monthly,
+        "quarterly" => :quarterly,
+        "annual" => :annually,
+        "annually" => :annually,
+        "yearly" => :annually
+      }
+    },
+    de: %{
+      repayment: ["rate", "raten", "tilgung", "annuität"],
+      interest: ["zinsen", "zins"],
+      present_value: ["barwert", "gegenwartswert"],
+      joins: ["nach", "bei", "über", "für", "zu", "@"],
+      total: ["gesamt", "insgesamt"],
+      compounding: ["verzinst", "zinseszins"],
+      frequencies: %{
+        "täglich" => :daily,
+        "wöchentlich" => :weekly,
+        "monatlich" => :monthly,
+        "monatliche" => :monthly,
+        "vierteljährlich" => :quarterly,
+        "jährlich" => :annually,
+        "jährliche" => :annually
+      }
+    },
+    fr: %{
+      repayment: ["mensualité", "remboursement", "échéance"],
+      interest: ["intérêt", "intérêts"],
+      present_value: ["valeur actuelle", "valeur présente"],
+      joins: ["après", "à", "sur", "pendant", "pour", "@"],
+      total: ["total"],
+      compounding: ["composé", "capitalisé"],
+      frequencies: %{
+        "quotidien" => :daily,
+        "quotidienne" => :daily,
+        "hebdomadaire" => :weekly,
+        "mensuel" => :monthly,
+        "mensuelle" => :monthly,
+        "trimestriel" => :quarterly,
+        "trimestrielle" => :quarterly,
+        "annuel" => :annually,
+        "annuelle" => :annually
+      }
+    },
+    es: %{
+      repayment: ["cuota", "pago", "amortización"],
+      interest: ["interés", "intereses"],
+      present_value: ["valor actual", "valor presente"],
+      joins: ["después", "a", "en", "durante", "por", "@"],
+      total: ["total"],
+      compounding: ["compuesto", "capitalizado"],
+      frequencies: %{
+        "diario" => :daily,
+        "diaria" => :daily,
+        "semanal" => :weekly,
+        "mensual" => :monthly,
+        "trimestral" => :quarterly,
+        "anual" => :annually
+      }
+    },
+    ja: %{
+      repayment: ["返済", "返済額"],
+      interest: ["利息", "金利"],
+      present_value: ["現在価値"],
+      joins: ["後", "で", "@"],
+      total: ["合計", "総額"],
+      compounding: ["複利"],
+      frequencies: %{
+        "毎日" => :daily,
+        "毎週" => :weekly,
+        "毎月" => :monthly,
+        "月々" => :monthly,
+        "四半期" => :quarterly,
+        "毎年" => :annually,
+        "年間" => :annually
+      }
+    }
+  }
+
+  @doc """
+  The financial vocabulary for a locale.
+
+  ### Arguments
+
+  * `locale` - the locale whose vocabulary to read.
+
+  ### Returns
+
+  * A map with `:repayment`, `:interest`, `:present_value`, `:joins`,
+    `:total` and `:compounding` — each a list of lowercased forms — and
+    `:frequencies`, a map from form to `:daily`, `:weekly`, `:monthly`,
+    `:quarterly` or `:annually`.
+
+  ### Examples
+
+      iex> "zinsen" in LocalizePad.Lexicon.finance(:de).interest
+      true
+
+      iex> LocalizePad.Lexicon.finance(:fr).frequencies["mensuelle"]
+      :monthly
+
+  """
+  @spec finance(Locales.locale()) :: map()
+  def finance(locale \\ :en) do
+    Map.get(@finance, language(locale), @finance.en)
+  end
+
   # Words that name the reader's own units as a conversion target: `42 km in
   # preferred units`. The answer comes from CLDR's unit preferences for the
   # sheet's territory, so `en-AU` keeps kilometres where `en-US` gets miles.
@@ -765,13 +978,18 @@ defmodule LocalizePad.Lexicon do
       |> List.flatten()
       |> Enum.flat_map(&String.split/1),
       @trip |> Map.get(language, @trip.en) |> Map.values() |> List.flatten(),
-      # Grammar this application wrote that does not live in these tables.
-      # English only, as those modules are — `circa`, `monthly repayment` and
-      # `VAT` are recognised in any locale because nothing has translated them
-      # yet, and the underline should say so rather than flatter the count.
-      Finance.authored(),
-      SalesTax.authored(),
-      Uncertain.authored()
+      Map.get(@taxes, language, @taxes.en),
+      @finance
+      |> Map.get(language, @finance.en)
+      |> Map.drop([:frequencies])
+      |> Map.values()
+      |> List.flatten()
+      |> Enum.flat_map(&String.split/1),
+      @finance |> Map.get(language, @finance.en) |> Map.fetch!(:frequencies) |> Map.keys(),
+      @uncertainty |> Map.get(language, @uncertainty.en) |> Map.values() |> List.flatten()
+      # CLDR supplies the rest: month and weekday names, unit names, currency
+      # symbols and the words for a calendar unit, so a duration and an amount
+      # are read in every locale without a word of them being written here.
     ]
     |> List.flatten()
     |> Enum.map(&String.downcase/1)

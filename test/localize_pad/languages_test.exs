@@ -171,6 +171,63 @@ defmodule LocalizePad.LanguagesTest do
     end
   end
 
+  describe "money vocabulary in the reader's language" do
+    test "a sales tax is named the way each country names it" do
+      assert answer("MwSt = 19%\n300 € + MwSt", "de") == "357,00\u00A0€"
+      assert answer("TVA = 20%\n300 € + TVA", "fr") == "360,00\u00A0€"
+      assert answer("IVA = 21%\n300 € + IVA", "es") == "363,00\u00A0€"
+      assert answer("消費税 = 10%\n¥300 + 消費税", "ja") == "￥330"
+    end
+
+    test "including the ones written as more than one token" do
+      # `sales tax` is two words and `消費税` is one word the segmenter splits
+      # into two. Both were in the vocabulary and neither could ever match
+      # until tax names were joined over runs of words, as zone names are.
+      assert answer("sales tax = 8%\n$300 + sales tax", "en") == "$324.00"
+      assert answer("消費税 = 10%\n¥300 + 消費税", "ja") == "￥330"
+    end
+
+    test "a loan is repaid in the reader's words" do
+      # One calculation, four vocabularies, and the same cent.
+      assert answer("monthly repayment on $10,000 over 6 years at 6%", "en") == "$165.73"
+      assert answer("monatliche Rate auf 10.000 € über 6 Jahre zu 6 %", "de") == "165,73\u00A0€"
+      assert answer("mensualité sur 10 000 € sur 6 ans à 6 %", "fr") == "165,73\u00A0€"
+      assert answer("cuota mensual de 10.000 € durante 6 años al 6 %", "es") == "165,73\u00A0€"
+    end
+
+    test "and interest is earned in them" do
+      assert answer("interest on $1,000 for 3 years at 7%", "en") == "$225.04"
+      assert answer("Zinsen auf 1.000 € für 3 Jahre zu 7 %", "de") == "225,04\u00A0€"
+    end
+
+    test "a present value too, one word in German and two in English" do
+      assert answer("present value of $1,000 after 20 years at 10%", "en") == "$148.64"
+      assert answer("Barwert von 1.000 € nach 20 Jahren zu 10 %", "de") == "148,64\u00A0€"
+      assert answer("valeur actuelle de 1 000 € après 20 ans à 10 %", "fr") == "148,64\u00A0€"
+    end
+
+    test "German reads its dative plural, which is what a preposition governs" do
+      # `nach 3 Jahren` is how the phrase is written; CLDR holds `Jahr` and
+      # `Jahre` and has no reason to hold `Jahren`, so the natural phrasing
+      # was not a duration at all. `3 Wochen` always worked, its plural
+      # already ending in `-n`, which is what made the gap look arbitrary.
+      assert answer("1.000 € nach 3 Jahren zu 7 %", "de") == "1.225,04\u00A0€"
+      assert answer("1.000 € nach 3 Jahre zu 7 %", "de") == "1.225,04\u00A0€"
+    end
+
+    test "an approximate year is qualified in the reader's language" do
+      for {line, locale} <- [
+            {"circa 1955", "en"},
+            {"ungefähr 1955", "de"},
+            {"environ 1955", "fr"},
+            {"hacia 1955", "es"},
+            {"約 1955", "ja"}
+          ] do
+        assert answer(line, locale) =~ "1955", "#{locale} did not read #{line}"
+      end
+    end
+  end
+
   describe "the core of the language works in each" do
     # Not exhaustive — a regression net across the capabilities most likely to
     # break when the locale changes, written natively in each.

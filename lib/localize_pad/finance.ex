@@ -39,7 +39,7 @@ defmodule LocalizePad.Finance do
 
   """
 
-  alias LocalizePad.{Percentage, Token}
+  alias LocalizePad.{Lexicon, Percentage, Token}
 
   @periods_per_year %{
     daily: 365,
@@ -49,42 +49,7 @@ defmodule LocalizePad.Finance do
     annually: 1
   }
 
-  @frequencies %{
-    "daily" => :daily,
-    "weekly" => :weekly,
-    "monthly" => :monthly,
-    "quarterly" => :quarterly,
-    "annual" => :annually,
-    "annually" => :annually,
-    "yearly" => :annually
-  }
-
   @calendar_units ~w(year month week day)
-
-  # The nouns and qualifiers that name a calculation, as against the numbers
-  # and units it works on.
-  @phrase_words ~w(
-    repayment repayments interest present value
-    after at over for total compounding compounded
-  )
-
-  @doc """
-  The words this module had to be told.
-
-  TEMPORARY, for a demo — see `LocalizePad.Lexicon.authored/1`.
-
-  ### Returns
-
-  * A list of lowercased forms.
-
-  ### Examples
-
-      iex> "monthly" in LocalizePad.Finance.authored()
-      true
-
-  """
-  @spec authored() :: [String.t()]
-  def authored, do: Map.keys(@frequencies) ++ @phrase_words
 
   @type slots :: %{
           principal: Money.t(),
@@ -118,11 +83,13 @@ defmodule LocalizePad.Finance do
       :future_value
 
   """
-  @spec match([Token.t()]) :: {:ok, {:finance, atom(), slots()}} | :error
-  def match(tokens) when is_list(tokens) do
+  @spec match([Token.t()], LocalizePad.Locales.locale()) ::
+          {:ok, {:finance, atom(), slots()}} | :error
+  def match(tokens, locale \\ :en) when is_list(tokens) do
     words = Enum.map(tokens, &String.downcase(&1.source))
+    vocabulary = Lexicon.finance(locale)
 
-    with {:ok, kind} <- kind(words),
+    with {:ok, kind} <- kind(words, vocabulary),
          {:ok, principal} <- take_money(tokens),
          {:ok, rate} <- take_percentage(tokens),
          {:ok, years} <- take_years(tokens) do
@@ -130,8 +97,8 @@ defmodule LocalizePad.Finance do
         principal: principal,
         rate: rate,
         years: years,
-        compounding: compounding(words),
-        frequency: frequency(words)
+        compounding: compounding(words, vocabulary),
+        frequency: frequency(words, vocabulary)
       }
 
       {:ok, {:finance, kind, slots}}
@@ -141,35 +108,48 @@ defmodule LocalizePad.Finance do
   # The noun decides the calculation; a frequency qualifier in front of
   # `interest` decides whether it is interest *earned* on savings or interest
   # *paid* on a loan.
-  defp kind(words) do
+  defp kind(words, vocabulary) do
     cond do
-      names?(words, ["repayment", "repayments"]) -> {:ok, :repayment}
-      names?(words, ["interest"]) -> interest_kind(words)
-      names?(words, ["present"]) and names?(words, ["value"]) -> {:ok, :present_value}
-      names?(words, ["after", "at", "@", "over", "for"]) -> {:ok, :future_value}
+      names?(words, vocabulary.repayment) -> {:ok, :repayment}
+      names?(words, vocabulary.interest) -> interest_kind(words, vocabulary)
+      names?(words, vocabulary.present_value) -> {:ok, :present_value}
+      names?(words, vocabulary.joins) -> {:ok, :future_value}
       true -> :error
     end
   end
 
   # Interest *earned* on savings, or interest *paid* on a loan. A frequency
   # qualifier — "monthly interest", "total interest" — marks the loan reading.
-  defp interest_kind(words) do
-    if frequency(words), do: {:ok, :loan_interest}, else: {:ok, :interest}
+  defp interest_kind(words, vocabulary) do
+    if frequency(words, vocabulary), do: {:ok, :loan_interest}, else: {:ok, :interest}
   end
 
-  defp names?(words, candidates), do: Enum.any?(candidates, &(&1 in words))
+  # A form may be more than one word — `present value`, `valeur actuelle` — so
+  # the line is searched as a phrase as well as word by word.
+  defp names?(words, candidates) do
+    phrase = Enum.join(words, " ")
 
-  defp frequency(words) do
+    Enum.any?(candidates, fn candidate ->
+      if String.contains?(candidate, " "),
+        do: String.contains?(phrase, candidate),
+        else: candidate in words
+    end)
+  end
+
+  defp frequency(words, vocabulary) do
     Enum.find_value(words, fn word ->
-      if word == "total", do: :total, else: Map.get(@frequencies, word)
+      if word in vocabulary.total, do: :total, else: Map.get(vocabulary.frequencies, word)
     end)
   end
 
   # `compounding monthly` overrides the default of yearly compounding.
-  defp compounding(words) do
-    case Enum.find_index(words, &(&1 in ["compounding", "compounded"])) do
-      nil -> :annually
-      index -> words |> Enum.at(index + 1) |> then(&Map.get(@frequencies, &1, :annually))
+  defp compounding(words, vocabulary) do
+    case Enum.find_index(words, &(&1 in vocabulary.compounding)) do
+      nil ->
+        :annually
+
+      index ->
+        words |> Enum.at(index + 1) |> then(&Map.get(vocabulary.frequencies, &1, :annually))
     end
   end
 

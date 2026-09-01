@@ -130,6 +130,7 @@ defmodule LocalizePad.Tokenizer do
       |> join_money(locale)
       |> mark_currencies(locale)
       |> join_zones(locale)
+      |> join_taxes(locale)
       |> mark_calendars()
       |> mark_currency_names(locale)
       |> mark_preferences(locale)
@@ -607,6 +608,57 @@ defmodule LocalizePad.Tokenizer do
     end)
   end
 
+  # A tax may be more than one token, and for two different reasons. `sales
+  # tax` is two words in English, and `消費税` is one word that the segmenter's
+  # dictionary hands back as `消費` and `税` — so both are matched over runs of
+  # word tokens rather than one at a time, exactly as zone names are. Until
+  # this existed, `sales tax` was in the vocabulary and could never match.
+  #
+  # Longest run first, so a two-word name is not lost to a one-word one.
+  @maximum_tax_words 2
+
+  defp join_taxes([], _locale), do: []
+
+  defp join_taxes([%Token{kind: :word} | _rest] = tokens, locale) do
+    case longest_tax(tokens, locale) do
+      {:ok, tax, source, consumed} ->
+        token = Token.covering(Token.new(:tax, tax, source), Enum.take(tokens, consumed))
+
+        [token | tokens |> Enum.drop(consumed) |> join_taxes(locale)]
+
+      :error ->
+        [hd(tokens) | tokens |> tl() |> join_taxes(locale)]
+    end
+  end
+
+  defp join_taxes([token | rest], locale), do: [token | join_taxes(rest, locale)]
+
+  # Joined without a space as well as with one, because a script written
+  # without word spaces is split by the segmenter and must be put back the way
+  # it was typed: `消費税`, not `消費 税`.
+  defp longest_tax(tokens, locale) do
+    words = tokens |> Enum.take(@maximum_tax_words) |> Enum.take_while(&(&1.kind == :word))
+    language = lexicon_locale(locale)
+
+    words
+    |> Enum.count()
+    |> countdown()
+    |> Enum.flat_map(&tax_candidates(words, &1))
+    |> Enum.find_value(:error, fn {source, length} ->
+      if SalesTax.names_tax?(source, language) do
+        {:ok, SalesTax.named(source), source, length}
+      end
+    end)
+  end
+
+  # Each run of words joined both with a space and without one, longest run
+  # first: `sales tax` needs the space and `消費税` must not have it.
+  defp tax_candidates(words, length) do
+    taken = Enum.take(words, length)
+
+    for joiner <- [" ", ""], do: {Enum.map_join(taken, joiner, & &1.source), length}
+  end
+
   # `New York` and `Hong Kong` are two words each, so zone names are matched
   # over runs of word tokens rather than one at a time. Longest run first, so
   # `New York` wins over a hypothetical `York`.
@@ -727,16 +779,9 @@ defmodule LocalizePad.Tokenizer do
   # A word may be a keyword, a unit, both, or neither. Both readings are kept
   # when they exist — `in` is the conversion keyword and also `inch`.
   defp classify_word(word, locale) do
-    cond do
-      SalesTax.names_tax?(word) ->
-        Token.new(:tax, SalesTax.named(word), word)
-
-      match?({:ok, _moment}, Lexicon.deictic(word, lexicon_locale(locale))) ->
-        {:ok, moment} = Lexicon.deictic(word, lexicon_locale(locale))
-        Token.new(:temporal, {:deictic, moment}, word)
-
-      true ->
-        classify_ordinary_word(word, locale)
+    case Lexicon.deictic(word, lexicon_locale(locale)) do
+      {:ok, moment} -> Token.new(:temporal, {:deictic, moment}, word)
+      :error -> classify_ordinary_word(word, locale)
     end
   end
 
