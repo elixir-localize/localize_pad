@@ -92,6 +92,7 @@ defmodule LocalizePad.Highlight do
     0
     |> Line.classify(source, locale)
     |> segments(source, locale, variables)
+    |> colour_tags()
     |> Enum.reject(fn {_class, text} -> text == "" end)
     |> mark_authored(locale, Keyword.get(options, :mark_authored, false))
   end
@@ -165,6 +166,27 @@ defmodule LocalizePad.Highlight do
       end)
 
     segments
+  end
+
+  # A tag is not tokenized — it is lifted out of the line before the engine
+  # reads it, so it arrives here inside the uncoloured run around the
+  # expression. Colouring it is therefore a split of that run rather than a
+  # token kind, and only uncoloured runs are split: a heading and a comment
+  # are whole-line decisions, and a `#` inside either is part of what the
+  # reader wrote rather than a tag.
+  defp colour_tags(segments) do
+    Enum.flat_map(segments, fn
+      {nil, text} -> split_tags(text)
+      segment -> [segment]
+    end)
+  end
+
+  defp split_tags(text) do
+    Line.tag_pattern()
+    |> Regex.split(text, include_captures: true)
+    |> Enum.map(fn part ->
+      if String.starts_with?(part, "#"), do: {:tag, part}, else: {nil, part}
+    end)
   end
 
   # Declare-before-use, so a name colours from the line below the one that

@@ -324,7 +324,7 @@ defmodule LocalizePad.Temporal.Recurrence do
   """
   @spec occurrences(String.t(), Date.t()) :: {:ok, Tempo.IntervalSet.t()} | {:error, term()}
   def occurrences(rule, %Date{} = from) do
-    recurrence = Tempo.RRule.parse!(rule, from: Tempo.from_elixir(from))
+    recurrence = Tempo.RRule.parse!(rule, from: Tempo.from_elixir(begin_on(rule, from)))
 
     case Tempo.to_interval(recurrence) do
       {:ok, set} -> {:ok, set}
@@ -334,4 +334,31 @@ defmodule LocalizePad.Temporal.Recurrence do
     # A rule the library rejects must show no answer, not take the sheet down.
     exception -> {:error, exception}
   end
+
+  # A workaround for a defect in Tempo's RRULE expansion, not a rule of this
+  # application. It should be removed when that is fixed.
+  #
+  # RFC 5545 is explicit that DTSTART supplies only the components a rule does
+  # *not* state, and its own worked example of US Thanksgiving —
+  # `DTSTART:19971106` with `FREQ=YEARLY;BYDAY=4TH;BYMONTH=11` — recurs on the
+  # 27th and the 26th, so the starting day of the month plainly does not
+  # survive into the answers. Tempo carries it through anyway and then
+  # validates it against the target month, so a question asked on the 31st
+  # looks for the 31st of November, finds no such day, and returns nothing at
+  # all. The sheet went blank for one day in every long month and answered
+  # correctly again the next morning, which is the shape of defect that
+  # survives a hundred test runs.
+  #
+  # Worse where the rule names its day outright: `FREQ=YEARLY;BYMONTH=2;
+  # BYMONTHDAY=14` asked on the 29th answers 2028 and 2032 — the leap years,
+  # the only ones with a 29th of February — and silently drops the rest. That
+  # one is wrong rather than empty.
+  #
+  # Every month has a 28th, so starting there costs nothing a rule of this kind
+  # can notice: the days it matches are picked by the rule, in another month.
+  defp begin_on(rule, %Date{day: day} = from) when day > 28 do
+    if String.contains?(rule, "BYMONTH="), do: %{from | day: 28}, else: from
+  end
+
+  defp begin_on(_rule, from), do: from
 end

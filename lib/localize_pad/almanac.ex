@@ -42,7 +42,17 @@ defmodule LocalizePad.Almanac do
   provides for it, and how much of the disc is lit — which is the part people
   are actually asking about when they ask.
 
+  The names are translated and the number is CLDR's, so a German sheet reads
+  `Zunehmende Sichel 🌒 · 29 % beleuchtet`. The words a reader *types* are
+  still English — `moon phase`, `sunrise` — which is the same split
+  `LocalizePad.Finance` lives with: an input vocabulary this application wrote,
+  and output in the reader's own language.
+
   """
+
+  use Localize.Message.Sigils,
+    backend: LocalizePad.Gettext,
+    sigils: [domain: "answers"]
 
   alias LocalizePad.{Lexicon, Temporal, Token}
 
@@ -209,33 +219,59 @@ defmodule LocalizePad.Almanac do
   # look at, and the quarter is a sector rather than an instant nobody's line
   # will land on.
   @phase_names [
-    {22.5, "New moon"},
-    {67.5, "Waxing crescent"},
-    {112.5, "First quarter"},
-    {157.5, "Waxing gibbous"},
-    {202.5, "Full moon"},
-    {247.5, "Waning gibbous"},
-    {292.5, "Last quarter"},
-    {337.5, "Waning crescent"},
-    {360.0, "New moon"}
+    {22.5, :new_moon},
+    {67.5, :waxing_crescent},
+    {112.5, :first_quarter},
+    {157.5, :waxing_gibbous},
+    {202.5, :full_moon},
+    {247.5, :waning_gibbous},
+    {292.5, :last_quarter},
+    {337.5, :waning_crescent},
+    {360.0, :new_moon}
   ]
 
   defp describe_phase(moment, locale) do
-    phase = Astro.lunar_phase_at(moment)
-    lit = Astro.illuminated_fraction_of_moon_at(moment)
+    angle = Astro.lunar_phase_at(moment)
 
-    "#{phase_name(phase)} #{Astro.lunar_phase_emoji(phase)} · #{lit_percentage(lit, locale)} lit"
+    phase = phase_name(angle, locale)
+    moon = Astro.lunar_phase_emoji(angle)
+    lit = lit_percentage(Astro.illuminated_fraction_of_moon_at(moment), locale)
+
+    with_locale(locale, fn -> ~t"#{phase} #{moon} · #{lit} lit" end)
   end
 
-  defp phase_name(phase) do
+  # A whole name per phase rather than a word assembled from `waxing` and
+  # `crescent`. The two halves agree in French and disagree in German, and a
+  # file that joins them has decided a grammatical question in a language it
+  # was not written in.
+  defp phase_name(phase, locale) do
     {_ceiling, name} = Enum.find(@phase_names, fn {ceiling, _name} -> phase < ceiling end)
 
-    name
+    with_locale(locale, fn -> phase_message(name) end)
   end
 
-  # The number is localized even though the words are not. A German sheet
-  # writing `29,9 %` beside an English phase name is half a translation, and
-  # the half that is done is the half CLDR does for free.
+  defp phase_message(:new_moon), do: ~t"New moon"
+  defp phase_message(:waxing_crescent), do: ~t"Waxing crescent"
+  defp phase_message(:first_quarter), do: ~t"First quarter"
+  defp phase_message(:waxing_gibbous), do: ~t"Waxing gibbous"
+  defp phase_message(:full_moon), do: ~t"Full moon"
+  defp phase_message(:waning_gibbous), do: ~t"Waning gibbous"
+  defp phase_message(:last_quarter), do: ~t"Last quarter"
+  defp phase_message(:waning_crescent), do: ~t"Waning crescent"
+
+  defp with_locale(locale, fun) do
+    Gettext.with_locale(LocalizePad.Gettext, gettext_locale(locale), fun)
+  end
+
+  defp gettext_locale(locale) do
+    case Localize.validate_locale(locale) do
+      {:ok, language_tag} -> to_string(language_tag.language)
+      {:error, _reason} -> "en"
+    end
+  end
+
+  # CLDR's percent, so a German sheet writes `29 %` with its non-breaking
+  # space and an English one writes `29%` without.
   defp lit_percentage(fraction, locale) do
     case Localize.Number.to_string(fraction,
            locale: locale,

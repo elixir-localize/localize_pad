@@ -32,17 +32,107 @@ msgstr ""
 msgid "no rate declared — add {$example}"
 msgstr "no hay tasa declarada — añade {$example}"
 
-#: lib/localize_pad/refusal.ex:66
-#, elixir-autogen, icu-format
-msgid "no {$name} there that day"
-msgstr ""
-
 #: lib/localize_pad/refusal.ex:55
 #, elixir-autogen, icu-format
 msgid "which place? — try {$example}"
-msgstr ""
+msgstr "¿qué lugar? — prueba {$example}"
 
 #: lib/localize_pad/refusal.ex:59
 #, elixir-autogen, icu-format
 msgid "where is {$name}?"
-msgstr ""
+msgstr "¿dónde está {$name}?"
+
+#: lib/localize_pad/trip.ex:313
+#, elixir-autogen, icu-format
+msgid "{$nights} nights"
+msgstr ".input {$nights :number}\n.match $nights\none {{{$nights} noche}}\n*   {{{$nights} noches}}\n"
+
+#: lib/localize_pad/trip.ex:333
+#, elixir-autogen, icu-format
+msgid "{$nights} nights, exactly"
+msgstr ".input {$nights :number}\n.match $nights\none {{{$nights} noche, exactamente}}\n*   {{{$nights} noches, exactamente}}\n"
+
+#: lib/localize_pad/trip.ex:328
+#, elixir-autogen, icu-format
+msgid "{$nights} nights, {$over} over"
+msgstr ".input {$nights :number}\n.match $nights\none {{{$nights} noche, {$over} de más}}\n*   {{{$nights} noches, {$over} de más}}\n"
+
+#: lib/localize_pad/trip.ex:320
+#, elixir-autogen, icu-format
+msgid "{$nights} nights, {$spare} to spare"
+msgstr ".input {$nights :number}\n.match $nights\none {{{$nights} noche, {$spare} de sobra}}\n*   {{{$nights} noches, {$spare} de sobra}}\n"
+
+#: lib/localize_pad/refusal.ex:90
+#, elixir-autogen, icu-format
+msgid "no trip yet — add {$example}"
+msgstr "aún no hay viaje — añade {$example}"
+
+#: lib/localize_pad/refusal.ex:96
+#, elixir-autogen, icu-format
+msgid "when? — add {$example}"
+msgstr "¿cuándo? — añade {$example}"
+
+#: lib/localize_pad/refusal.ex:72
+#, elixir-autogen, icu-format, fuzzy
+msgid "no sunrise there that day"
+msgstr "ese día allí no amanece"
+
+#: lib/localize_pad/refusal.ex:76
+#, elixir-autogen, icu-format
+msgid "no sunset there that day"
+msgstr "ese día allí no anochece"
+
+#: lib/localize_pad/refusal.ex:80
+#, elixir-autogen, icu-format
+msgid "the moon does not rise there that day"
+msgstr "ese día la Luna no sale allí"
+
+#: lib/localize_pad/refusal.ex:84
+#, elixir-autogen, icu-format
+msgid "the moon does not set there that day"
+msgstr "ese día la Luna no se pone allí"
+
+#: lib/localize_pad/almanac.ex:255
+#, elixir-autogen, icu-format
+msgid "First quarter"
+msgstr "Cuarto creciente"
+
+#: lib/localize_pad/almanac.ex:257
+#, elixir-autogen, icu-format
+msgid "Full moon"
+msgstr "Luna llena"
+
+#: lib/localize_pad/almanac.ex:259
+#, elixir-autogen, icu-format
+msgid "Last quarter"
+msgstr "Cuarto menguante"
+
+#: lib/localize_pad/almanac.ex:253
+#, elixir-autogen, icu-format
+msgid "New moon"
+msgstr "Luna nueva"
+
+#: lib/localize_pad/almanac.ex:260
+#, elixir-autogen, icu-format
+msgid "Waning crescent"
+msgstr "Luna menguante"
+
+#: lib/localize_pad/almanac.ex:258
+#, elixir-autogen, icu-format
+msgid "Waning gibbous"
+msgstr "Gibosa menguante"
+
+#: lib/localize_pad/almanac.ex:254
+#, elixir-autogen, icu-format
+msgid "Waxing crescent"
+msgstr "Luna creciente"
+
+#: lib/localize_pad/almanac.ex:256
+#, elixir-autogen, icu-format
+msgid "Waxing gibbous"
+msgstr "Gibosa creciente"
+
+#: lib/localize_pad/almanac.ex:240
+#, elixir-autogen, icu-format
+msgid "{$phase} {$moon} · {$lit} lit"
+msgstr "{$phase} {$moon} · {$lit} iluminada"

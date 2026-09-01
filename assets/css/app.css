@@ -321,3 +321,12 @@
 .tok-label {
   opacity: 0.55;
 }
+
+/* A tag is a name the reader invented, so it is coloured like the other names
+   on the sheet — variables and line references — rather than given a colour
+   of its own. What `#ann` and `ann = 42` have in common is that the reader
+   chose the word, and that is the thing worth seeing at a glance. */
+.tok-tag {
+  color: var(--color-warning);
+  opacity: 0.8;
+}

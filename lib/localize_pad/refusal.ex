@@ -62,8 +62,38 @@ defmodule LocalizePad.Refusal do
   # High latitudes, in season. Not a mistake to correct — the sun really does
   # not rise — so the message says which event did not happen rather than
   # suggesting a repair.
-  def message({:no_event, event}, options) when is_atom(event) do
-    with_locale(options, fn -> ~t"no #{name = to_string(event)} there that day" end)
+  #
+  # One whole sentence per event rather than a frame with the event's name
+  # dropped into it. A noun in a slot is a sentence assembled by this file
+  # instead of by the translator, and the assembly is only ever correct in the
+  # language it was written in: German wants `kein Sonnenaufgang`, French
+  # `pas de lever de soleil`, and neither is `no` plus a word.
+  def message({:no_event, :sunrise}, options) do
+    with_locale(options, fn -> ~t"no sunrise there that day" end)
+  end
+
+  def message({:no_event, :sunset}, options) do
+    with_locale(options, fn -> ~t"no sunset there that day" end)
+  end
+
+  def message({:no_event, :moonrise}, options) do
+    with_locale(options, fn -> ~t"the moon does not rise there that day" end)
+  end
+
+  def message({:no_event, :moonset}, options) do
+    with_locale(options, fn -> ~t"the moon does not set there that day" end)
+  end
+
+  # A stop with no trip above it. The itinerary is the thing that gives a stop
+  # its dates, so naming one is the whole fix.
+  def message(:no_trip, options) do
+    with_locale(options, fn -> ~t"no trip yet — add #{example = "trip from March 3"}" end)
+  end
+
+  # A trip has to start somewhere, and a date is the one fact it cannot be
+  # planned without.
+  def message(:no_start_date, options) do
+    with_locale(options, fn -> ~t"when? — add #{example = "trip from March 3"}" end)
   end
 
   def message(_reason, _options), do: nil

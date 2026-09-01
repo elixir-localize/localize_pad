@@ -18,6 +18,9 @@ defmodule LocalizePad.Line do
 
   * `:declaration` — `name = expression`. Binds a name for the lines below.
 
+  * `:trip`, `:trip_stop`, `:trip_end` — the lines of an itinerary. See
+    `LocalizePad.Trip`.
+
   * `:expression` — everything else, including a line carrying a label.
 
   ## Aggregates are typed, not clicked
@@ -41,9 +44,28 @@ defmodule LocalizePad.Line do
 
   """
 
-  alias LocalizePad.{Evaluator, Lexicon, Locales, Parser, Telemetry, Token, Tokenizer, Value}
+  alias LocalizePad.{
+    Evaluator,
+    Lexicon,
+    Locales,
+    Parser,
+    Telemetry,
+    Token,
+    Tokenizer,
+    Trip,
+    Value
+  }
 
-  @type kind :: :blank | :heading | :comment | :aggregate | :declaration | :expression
+  @type kind ::
+          :blank
+          | :heading
+          | :comment
+          | :aggregate
+          | :declaration
+          | :expression
+          | :trip
+          | :trip_stop
+          | :trip_end
 
   @type t :: %__MODULE__{
           index: non_neg_integer(),
@@ -53,6 +75,7 @@ defmodule LocalizePad.Line do
           name: String.t() | nil,
           aggregate: Lexicon.aggregate() | nil,
           expression: String.t() | nil,
+          tags: [String.t()],
           value: Evaluator.value() | nil,
           formatted: String.t() | nil,
           error: term() | nil,
@@ -70,6 +93,7 @@ defmodule LocalizePad.Line do
     :value,
     :formatted,
     :error,
+    tags: [],
     depends_on: MapSet.new()
   ]
 
@@ -79,6 +103,15 @@ defmodule LocalizePad.Line do
 
   @heading ~r/^\s*#/u
   @comment ~r{^\s*//}u
+
+  # A tag is `#` and a word, anywhere but the start of a line — where a `#` is
+  # a heading, and stays one. Letters rather than `\w` so `#comida` and `#食費`
+  # tag a sheet as readily as `#food`.
+  #
+  # Tags are lifted out before anything else reads the line, which is what lets
+  # `Calamari: 18 #ann` keep its label and its arithmetic, and `sum #ann` still
+  # look like the word `sum` to the aggregate table.
+  @tag ~r/(?<=\s)#(\p{L}[\p{L}\p{N}_-]*)/u
 
   # A name is a word or phrase: starts with a letter, then letters, digits,
   # spaces and underscores. Requiring a letter first keeps `2 + 2 = 4` from
@@ -128,20 +161,31 @@ defmodule LocalizePad.Line do
   @spec classify(non_neg_integer(), String.t(), Locales.locale()) :: t()
   def classify(index, source, locale \\ :en) when is_integer(index) and is_binary(source) do
     line = %__MODULE__{index: index, source: source}
-    body = source |> String.replace(@trailing_comment, "") |> String.trim()
+    stripped = source |> String.replace(@trailing_comment, "") |> String.trim()
+    {tags, body} = extract_tags(stripped)
 
+    # Three kinds are decided by the whole line, before anything looks at what
+    # it says — and two of them carry no tags, because a `#` that opens a line
+    # is a heading and a `#` inside a comment is part of the comment.
     cond do
-      Regex.match?(@comment, source) ->
-        %{line | kind: :comment}
+      Regex.match?(@comment, source) -> %{line | kind: :comment}
+      Regex.match?(@heading, source) -> %{line | kind: :heading}
+      body == "" -> %{line | kind: :blank, tags: tags}
+      true -> classify_body(%{line | tags: tags}, body, locale)
+    end
+  end
 
-      Regex.match?(@heading, source) ->
-        %{line | kind: :heading}
-
-      body == "" ->
-        %{line | kind: :blank}
-
+  # The rest are decided by the shape of what is left, most particular first: a
+  # word that names a function, then the lines of a trip, then a declaration,
+  # then a label. Anything that is none of those is an expression, which is
+  # most lines.
+  defp classify_body(line, body, locale) do
+    cond do
       function = aggregate_function(body, locale) ->
         %{line | kind: :aggregate, aggregate: function}
+
+      kind = trip_kind(body) ->
+        %{line | kind: kind, expression: body}
 
       captures = Regex.run(@declaration, body) ->
         [_whole, name, expression] = captures
@@ -155,6 +199,27 @@ defmodule LocalizePad.Line do
         %{line | kind: :expression, expression: body}
     end
   end
+
+  @doc """
+  The pattern that finds a tag in a line.
+
+  Exposed so `LocalizePad.Highlight` can colour tags without keeping a second
+  copy of the rule. One regex, one definition of what a tag is — the editor
+  cannot come to disagree with the engine about which words are tags.
+
+  ### Returns
+
+  * A `t:Regex.t/0` whose whole match is the tag as written, `#` included, and
+    whose one capture is the name.
+
+  ### Examples
+
+      iex> Regex.run(LocalizePad.Line.tag_pattern(), " 18 #food")
+      ["#food", "food"]
+
+  """
+  @spec tag_pattern() :: Regex.t()
+  def tag_pattern, do: @tag
 
   @doc """
   Evaluates a classified line against the sheet's current state.
@@ -182,6 +247,13 @@ defmodule LocalizePad.Line do
   def evaluate(%__MODULE__{kind: :aggregate} = line, _context) do
     # Aggregates are filled in by the sheet, which is the only thing that knows
     # what range they cover.
+    line
+  end
+
+  def evaluate(%__MODULE__{kind: kind} = line, _context)
+      when kind in [:trip, :trip_stop, :trip_end] do
+    # So are the lines of a trip, for the same reason: a stop's dates depend on
+    # every stop above it, and the sheet is what holds them.
     line
   end
 
@@ -361,6 +433,28 @@ defmodule LocalizePad.Line do
   defp references({:line_ref, _line} = node), do: [node]
   defp references({:variable, _name} = node), do: [node]
   defp references(_node), do: []
+
+  # Every tag on the line, lowercased so `#Ann` and `#ann` are one tag, and the
+  # line with them taken out. Order is kept and duplicates are not, because a
+  # tag written twice is still one tag.
+  defp extract_tags(body) do
+    tags =
+      @tag
+      |> Regex.scan(" " <> body)
+      |> Enum.map(fn [_whole, name] -> String.downcase(name) end)
+      |> Enum.uniq()
+
+    {tags, (" " <> body) |> String.replace(@tag, "") |> String.trim()}
+  end
+
+  # `nil` rather than `:error`, for the same reason as the aggregate below it:
+  # the `cond` binds the kind and tests it in one clause.
+  defp trip_kind(body) do
+    case Trip.classify(body) do
+      {:ok, kind} -> kind
+      :error -> nil
+    end
+  end
 
   # `nil` rather than `:error`, so the classifying `cond` can bind the function
   # and test it in one clause, the way it does with a regex's captures.

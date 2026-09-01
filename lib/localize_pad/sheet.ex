@@ -73,7 +73,7 @@ defmodule LocalizePad.Sheet do
   """
 
   alias Localize.Unit
-  alias LocalizePad.{Evaluator, Line, Locales, Value}
+  alias LocalizePad.{Evaluator, Line, Locales, Trip, Value}
 
   @type t :: %__MODULE__{
           locale: Locales.tag(),
@@ -153,6 +153,12 @@ defmodule LocalizePad.Sheet do
       locale: sheet.locale,
       prefer_local: sheet.prefer_local,
       zone: sheet.zone,
+      # The whole classified document, so the line that opens a trip can read
+      # the stops written below it. It reads their *text*, never their answers,
+      # which is what keeps the single forward pass honest — see
+      # `LocalizePad.Trip`.
+      document: sheet.lines,
+      trip: %{},
       lines: []
     }
 
@@ -162,7 +168,7 @@ defmodule LocalizePad.Sheet do
   end
 
   defp evaluate_line(%Line{kind: :aggregate} = line, state) do
-    covered = covered_by(state.lines)
+    covered = covered_by(state.lines, line.tags)
     value = aggregate_of(line.aggregate, covered, state.locale, latest_rates())
 
     # An aggregate depends on every line it reaches back over, so editing any
@@ -179,7 +185,39 @@ defmodule LocalizePad.Sheet do
     %{state | lines: [line | state.lines], answers: put_answer(state.answers, line)}
   end
 
+  # The line that opens a trip plans the whole of it at once, and the stops
+  # below simply read the answer that was worked out for them. Planning each
+  # stop where it stands would mean re-walking the itinerary once per line.
+  defp evaluate_line(%Line{kind: :trip} = line, state) do
+    case Trip.plan(state.document, line.index, locale: state.locale) do
+      {:ok, summary, answers} ->
+        line = %{line | value: summary, formatted: summary, depends_on: covers(answers)}
+
+        %{state | lines: [line | state.lines], trip: Map.merge(state.trip, answers)}
+
+      {:error, reason} ->
+        line = %{line | value: nil, formatted: nil, error: reason}
+
+        %{state | lines: [line | state.lines]}
+    end
+  end
+
+  defp evaluate_line(%Line{kind: kind} = line, state)
+       when kind in [:trip_stop, :trip_end] do
+    planned(line, state, {:error, :no_trip})
+  end
+
   defp evaluate_line(%Line{} = line, state) do
+    # A stop written the label way — `Tokyo: 3 nights` — is an ordinary line
+    # everywhere except inside a trip, so it is only claimed when the trip
+    # above it planned an answer for this line.
+    case Map.fetch(state.trip, line.index) do
+      {:ok, _dates} -> planned(line, state, nil)
+      :error -> evaluate_expression(line, state)
+    end
+  end
+
+  defp evaluate_expression(%Line{} = line, state) do
     line = Line.evaluate(line, state)
 
     state
@@ -187,6 +225,24 @@ defmodule LocalizePad.Sheet do
     |> Map.update!(:answers, &put_answer(&1, line))
     |> bind_variable(line)
   end
+
+  # A stop's answer is the dates it occupies, worked out when the trip was
+  # planned. Outside a trip there is nothing to work them out from, and the
+  # line says so rather than going quietly blank.
+  defp planned(line, state, fallback) do
+    line =
+      case Map.fetch(state.trip, line.index) do
+        {:ok, dates} -> %{line | value: dates, formatted: dates}
+        :error -> %{line | value: nil, formatted: nil, error: error_of(fallback)}
+      end
+
+    %{state | lines: [line | state.lines], answers: put_answer(state.answers, line)}
+  end
+
+  defp error_of({:error, reason}), do: reason
+  defp error_of(nil), do: nil
+
+  defp covers(answers), do: answers |> Map.keys() |> MapSet.new()
 
   # The block an aggregate reports on, given the lines above it in the order
   # they were accumulated — most recent first.
@@ -201,12 +257,34 @@ defmodule LocalizePad.Sheet do
   # nothing anywhere else in a sheet — only a heading or an aggregate bounds a
   # block — and making it a boundary here alone would be a rule with one
   # instance.
-  defp covered_by(lines) do
+  defp covered_by(lines, []) do
     lines
     |> Enum.drop_while(&(&1.kind in [:aggregate, :blank]))
     |> Enum.take_while(&(&1.kind not in [:aggregate, :heading]))
     |> Enum.reverse()
   end
+
+  # A tagged aggregate reports on its tag rather than on its neighbours, so it
+  # reaches back over the whole section — past blanks, past plain lines, and
+  # past other aggregates. `sum #ann` and `sum #bob` under one another must
+  # each see every tagged line above them, and a block boundary between them
+  # would leave the second reporting on what the first had already passed.
+  #
+  # A heading still stops it. A tag means one thing per section of a sheet:
+  # `#food` under `# Rome` and `#food` under `# Paris` are two answers, which
+  # is what makes a heading worth typing.
+  #
+  # Naming several tags narrows rather than widens — `sum #ann #food` is what
+  # Ann spent on food, not everything either word touches. Widening has a
+  # spelling already, which is to tag the lines with one word.
+  defp covered_by(lines, tags) do
+    lines
+    |> Enum.take_while(&(&1.kind != :heading))
+    |> Enum.filter(&tagged?(&1, tags))
+    |> Enum.reverse()
+  end
+
+  defp tagged?(%Line{tags: carried}, tags), do: Enum.all?(tags, &(&1 in carried))
 
   defp put_answer(answers, %Line{value: nil}), do: answers
   defp put_answer(answers, %Line{index: index, value: value}), do: Map.put(answers, index, value)

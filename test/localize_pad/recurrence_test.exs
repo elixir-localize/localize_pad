@@ -79,6 +79,45 @@ defmodule LocalizePad.RecurrenceTest do
     end
   end
 
+  describe "the day the question is asked on" do
+    # A rule naming its own month is the same rule whichever day it is read on,
+    # and these pin that rather than leaving it to whatever date the suite
+    # happens to run. Both of these answered *nothing at all* before: the
+    # expansion built each candidate from the starting day of the month, so a
+    # question asked on the 31st looked for the 31st of November.
+    defp occurrences_on(source, reference) do
+      {:ok, tokens} = LocalizePad.Tokenizer.tokenize(source, locale: :en)
+
+      {:ok, {:recurrence, rule, from}} =
+        Recurrence.match(tokens, locale: :en, reference_date: reference)
+
+      {:ok, set} = Recurrence.occurrences(rule, from)
+
+      set
+      |> Tempo.IntervalSet.to_list()
+      |> Enum.map(&(&1 |> Tempo.Interval.from() |> Tempo.to_date() |> elem(1)))
+    end
+
+    test "a November rule is answerable on the 31st of a month" do
+      assert [~D[2026-11-26] | _rest] = occurrences_on("4th Thursday of November", ~D[2026-08-31])
+      assert [~D[2026-11-26] | _rest] = occurrences_on("4th Thursday of November", ~D[2026-01-31])
+    end
+
+    test "and a February rule on the 29th, 30th and 31st alike" do
+      # February is the strict case: every day past the 28th breaks it, so this
+      # was wrong on three days a month rather than one.
+      for reference <- [~D[2026-03-29], ~D[2026-03-30], ~D[2026-03-31]] do
+        assert [~D[2027-02-09] | _rest] = occurrences_on("2nd Tuesday of February", reference)
+      end
+    end
+
+    test "while a rule with no month of its own still counts from the day asked" do
+      # The repair must not reach rules it was not written for: a weekly rule
+      # starts on the day the reader asked, not three days earlier.
+      assert [~D[2026-08-31] | _rest] = occurrences_on("every Monday", ~D[2026-08-31])
+    end
+  end
+
   describe "not everything with a number is a recurrence" do
     test "ordinary arithmetic is untouched" do
       assert dates("2 + 2") == 4
