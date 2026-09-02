@@ -77,7 +77,13 @@ defmodule LocalizePad.TripTest do
 
   describe "the time budget" do
     test "an end date on the opening line says how much is left" do
-      assert List.first(answers("trip: March 3 to March 22, 2026\nTokyo: 3 nights")) ==
+      # Both dates carry their year. Written as `March 3 to March 22, 2026`,
+      # the first is a bare month and day and means the *next* 3rd of March —
+      # so from September 2026 the trip starts in 2027 and ends before it
+      # begins. The sheet is right and the phrasing is ambiguous; a test that
+      # leaves it ambiguous passes or fails depending on the month it is run
+      # in, which is how this one was written and how it was caught.
+      assert List.first(answers("trip: March 3, 2026 to March 22, 2026\nTokyo: 3 nights")) ==
                "3 nights, 16 to spare"
     end
 
