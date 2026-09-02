@@ -90,4 +90,29 @@ quel jour de la semaine est le 24/01/1984
 // L'usage compte aussi : une taille ne s'écrit
 // pas comme une distance.
 1,8 m en taille locale
+
+# Un voyage se planifie en français
+
+// Le mot qui ouvre un voyage, celui qui le
+// termine et l'unité des étapes sont français.
+// Les dates de chaque étape sortent du format
+// d'intervalle de CLDR.
+voyage du 3 mars 2026 au 22 mars 2026
+3 nuits à Tokyo
+5 nuits à Kyoto
+4 nuits à Osaka
+
+# Les étiquettes aussi
+
+// Un #mot dit de quelle sorte est une ligne.
+// N'importe laquelle des six fonctions peut
+// ensuite rendre compte de cette étiquette
+// plutôt que du bloc au-dessus d'elle.
+Vols : 1 850 € #transport
+Train : 435 € #transport
+Hôtels : 2 420 € #séjour
+Repas : 1 200 € #repas
+somme
+somme #transport
+moyenne #transport
 ```

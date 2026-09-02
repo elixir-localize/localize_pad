@@ -379,6 +379,16 @@ defmodule LocalizePad.Line do
     end
   end
 
+  # `10% of @3`, `VAT on @5`. A phrase holds two expressions like any binary
+  # node, and was the one shape this walk did not descend into — so a line
+  # reference inside one survived unresolved and the evaluator refused it.
+  defp resolve_line_references({:phrase, preposition, left, right}, answers) do
+    with {:ok, left} <- resolve_line_references(left, answers),
+         {:ok, right} <- resolve_line_references(right, answers) do
+      {:ok, {:phrase, preposition, left, right}}
+    end
+  end
+
   defp resolve_line_references({:convert, expression, target}, answers) do
     with {:ok, expression} <- resolve_line_references(expression, answers),
          {:ok, target} <- resolve_line_references(target, answers) do
@@ -422,6 +432,10 @@ defmodule LocalizePad.Line do
   end
 
   defp references({:binary, _operator, left, right}) do
+    references(left) ++ references(right)
+  end
+
+  defp references({:phrase, _preposition, left, right}) do
     references(left) ++ references(right)
   end
 

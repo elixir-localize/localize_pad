@@ -100,6 +100,23 @@ defmodule LocalizePad.SheetTest do
       assert answers("19 + 22\n@1 + 100") == ["41", "141"]
     end
 
+    test "a reference works inside a phrase, not only beside an operator" do
+      # `10% of @1` is a phrase node, and the walk that resolves references
+      # descended into binary, conversion and negation but not into it — so the
+      # reference survived unresolved and the line was refused. `10% of 41`
+      # worked, which is what made it look like a problem with `@1`.
+      assert answers("19 + 22\n10% of @1") == ["41", "4.1"]
+      assert answers("19 + 22\n10% off @1") == ["41", "36.9"]
+    end
+
+    test "and the graph records that reference too" do
+      # Without it a sheet would not know to re-render the phrase when the line
+      # it reads changes.
+      sheet = Sheet.new("19 + 22\n10% of @1", locale: :en)
+
+      assert Sheet.dependents(sheet, 0) == [1]
+    end
+
     test "a reference to a line with no answer is reported, not crashed" do
       sheet = Sheet.new("# heading\n@1 + 1", locale: :en)
 
