@@ -774,7 +774,20 @@ defmodule LocalizePadWeb.SheetLive do
         </figure>
       </section>
 
-      <footer class="mt-3 flex justify-end text-sm">
+      <footer class="mt-3 flex items-center justify-between gap-4 text-sm">
+        <%!-- The concept is Soulver's, and it belongs on the page rather than
+        only in the README. What this does differently — reading the reader's
+        language rather than formatting in it — is a difference *from*
+        something, and saying whose idea it was costs a line. --%>
+        <a
+          href="https://soulver.app"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="opacity-50 transition-opacity hover:opacity-80"
+        >
+          Inspired by Soulver.app
+        </a>
+
         <span :if={@total} class="rounded-md bg-base-200 px-3 py-1">
           <span class="opacity-60">Total</span>
           <span class="ml-2 font-semibold">{@total}</span>

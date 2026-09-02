@@ -87,6 +87,24 @@ defmodule LocalizePadWeb.SheetLiveTest do
     end
   end
 
+  describe "the attribution" do
+    test "credits Soulver, and links to it", %{conn: conn} do
+      # The concept is Soulver's. Saying so belongs on the page rather than
+      # only in the README, and a claim about someone else's work should not
+      # be able to go missing unnoticed.
+      {:ok, _live, html} = live(conn, ~p"/")
+
+      assert html =~ "Inspired by Soulver.app"
+      assert html =~ ~s(href="https://soulver.app")
+    end
+
+    test "and the link is safe to open" do
+      {:ok, _live, html} = live(build_conn(), ~p"/")
+
+      assert html =~ ~s(rel="noopener noreferrer")
+    end
+  end
+
   describe "editing" do
     test "typing recalculates" do
       {:ok, live, _html} = live(build_conn(), ~p"/")
