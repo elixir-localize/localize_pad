@@ -436,9 +436,14 @@ defmodule LocalizePad.SheetTest do
       markdown = "every Friday the 13th" |> Sheet.new(locale: :en) |> Sheet.to_markdown()
 
       # The margin truncates because it has one line. A file does not.
+      #
+      # Counted rather than named: the phrase states no year, so it answers
+      # with the next five and the window slides. Naming one of them asserts
+      # what the answer is *this year* — the fifth was `Jul 13, 2029` when this
+      # was written and drops out of the window in July 2029.
       refute markdown =~ "…"
       refute markdown =~ "5 dates"
-      assert markdown =~ "Jul 13, 2029"
+      assert markdown |> then(&Regex.scan(~r/\b\w{3} \d{1,2}, \d{4}\b/, &1)) |> length() >= 5
     end
 
     test "lines with no answer keep their text and gain no comment" do

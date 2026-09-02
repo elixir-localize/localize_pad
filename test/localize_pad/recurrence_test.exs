@@ -75,7 +75,13 @@ defmodule LocalizePad.RecurrenceTest do
     end
 
     test "Thanksgiving" do
-      assert [~D[2026-11-26], ~D[2027-11-25] | _rest] = dates("4th Thursday of November")
+      # Read from a stated day rather than from today. The phrase names no
+      # year, so it answers with the next four Thanksgivings — and on any day
+      # after 26 November 2026 the first of them is 2027's. Asserting on
+      # today's answer is asserting about the month the suite is run in, which
+      # is how a trip test came to pass in August and fail in September.
+      assert [~D[2026-11-26], ~D[2027-11-25] | _rest] =
+               occurrences_on("4th Thursday of November", ~D[2026-09-02])
     end
   end
 
